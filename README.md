@@ -149,6 +149,7 @@ python -m scripts.brew_espresso --fill-ml 50 --poll
 | `make status` | Zeigt alle registrierten Geräte und den aktuellen Status |
 | `make brew` | Startet einen Espresso (aktiviert Gerät automatisch) |
 | `make events` | Überwacht den Event-Stream in Echtzeit |
+| `make server` | Startet HTTP-Server für Siri Shortcuts Integration |
 | `make clean_tokens` | Löscht die gespeicherten Tokens |
 
 ### Beispiele
@@ -172,6 +173,82 @@ make brew BREW_ARGS="--poll"
 # Events überwachen (bricht nach 10 Events ab)
 make events EVENTS_LIMIT=10
 ```
+
+## Siri Shortcuts Integration
+
+Du kannst die Kaffeemaschine auch per Siri Shortcut steuern! Dafür stehen Shell-Scripts zur Verfügung:
+
+### Gerät aktivieren
+
+1. Öffne die **Shortcuts App** auf deinem iPhone/iPad/Mac
+2. Erstelle einen neuen Shortcut
+3. Füge eine **"Shell-Script ausführen"** Aktion hinzu
+4. Wähle als Script:
+   ```bash
+   /Users/tim/Development/HomeConnectCoffee/scripts/wake.sh
+   ```
+5. Benenne den Shortcut z.B. "Kaffeemaschine aktivieren"
+6. Aktiviere **"Mit Siri verwenden"** und wähle einen Spruch wie "Kaffeemaschine aktivieren"
+
+### Espresso starten
+
+1. Erstelle einen neuen Shortcut
+2. Füge eine **"Shell-Script ausführen"** Aktion hinzu
+3. Wähle als Script:
+   ```bash
+   /Users/tim/Development/HomeConnectCoffee/scripts/brew.sh
+   ```
+   Oder mit individueller Menge:
+   ```bash
+   /Users/tim/Development/HomeConnectCoffee/scripts/brew.sh 40
+   ```
+4. Benenne den Shortcut z.B. "Espresso machen"
+5. Aktiviere **"Mit Siri verwenden"** und wähle einen Spruch wie "Mach mir einen Espresso"
+
+**Hinweis:** Die Shell-Scripts funktionieren am besten auf macOS. Für iOS/iPadOS siehe HTTP-Server Option unten.
+
+### HTTP-Server für iOS/iPadOS (empfohlen)
+
+Für iOS/iPadOS ist ein HTTP-Server die bessere Lösung:
+
+1. **Starte den Server auf deinem Mac:**
+   ```bash
+   make server
+   ```
+   Der Server läuft standardmäßig auf `http://localhost:8080`
+
+2. **Für Zugriff von iOS/iPadOS:** Starte den Server mit deiner Mac-IP-Adresse:
+   ```bash
+   make server SERVER_ARGS="--host 0.0.0.0 --port 8080"
+   ```
+   Finde deine Mac-IP-Adresse mit: `ifconfig | grep "inet "`
+
+3. **Logging deaktivieren:** Wenn du keine Request-Logs sehen möchtest:
+   ```bash
+   make server SERVER_ARGS="--no-log"
+   ```
+   Standardmäßig ist Logging aktiviert und zeigt alle Requests mit Zeitstempel, IP-Adresse, Methode, Pfad und Status-Code.
+
+3. **Erstelle Shortcuts in der Shortcuts App:**
+
+   **Wake (Gerät aktivieren):**
+   - Füge eine **"URL abrufen"** Aktion hinzu
+   - URL: `http://DEINE_MAC_IP:8080/wake`
+   - Aktiviere **"Mit Siri verwenden"**
+
+   **Brew (Espresso starten):**
+   - Füge eine **"URL abrufen"** Aktion hinzu
+   - Methode: **POST**
+   - URL: `http://DEINE_MAC_IP:8080/brew`
+   - Request Body: JSON
+   - Body-Inhalt: `{"fill_ml": 50}`
+   - Aktiviere **"Mit Siri verwenden"`
+
+**Verfügbare Endpoints:**
+- `GET /wake` - Aktiviert das Gerät
+- `GET /status` - Zeigt den Gerätestatus
+- `POST /brew` - Startet einen Espresso (JSON: `{"fill_ml": 50}`)
+- `GET /health` - Health-Check
 
 ## Weitere Ideen
 

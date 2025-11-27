@@ -11,12 +11,13 @@ SCRIPT_BREW := $(THIS_DIR)/scripts/brew_espresso.py
 SCRIPT_STATUS := $(THIS_DIR)/scripts/device_status.py
 SCRIPT_EVENTS := $(THIS_DIR)/scripts/events.py
 SCRIPT_WAKE := $(THIS_DIR)/scripts/wake_device.py
+SCRIPT_SERVER := $(THIS_DIR)/scripts/server.py
 
 FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: init init_venv install_deps auth brew status events wake clean_tokens
+.PHONY: init init_venv install_deps auth brew status events wake server clean_tokens
 
 init: init_venv install_deps
 
@@ -40,6 +41,9 @@ events: init
 
 wake: init
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_WAKE)
+
+server: init
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_SERVER) $(SERVER_ARGS)
 
 clean_tokens:
 	rm -f $(HOME_CONNECT_TOKEN_PATH) tokens.json
