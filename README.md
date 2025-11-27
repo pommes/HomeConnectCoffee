@@ -11,42 +11,167 @@ Dieses Projekt zeigt, wie du deine Bosch CTL7181B0 (und andere HomeConnect-Kaffe
 
 ## Einrichtung
 
+### 1. Application bei Home Connect registrieren
+
+1. Gehe zu [developer.home-connect.com/applications](https://developer.home-connect.com/applications)
+2. Klicke auf **"Register Application"** oder **"New Application"**
+3. Fülle das Formular aus:
+   - **Application ID**: z.B. "HomeConnect Coffee Control"
+   - **OAuth Flow**: Wähle **"Authorization Code Grant flow"** (nicht "Device Flow")
+   - **Home Connect User Account for Testing**: **Leer lassen** – Wenn du den Account in deinem Profil gesetzt hast (E-Mail-Adresse), wird dieser automatisch verwendet. Nur ausfüllen, wenn du einen anderen Test-Account für diese spezifische Application verwenden möchtest.
+   - **Redirect URI**: `http://localhost:3000/callback`
+   - **Scopes**: Werden beim Auth-Flow angefordert (nicht bei der Registrierung) – siehe `.env` Datei
+   - **Add additional redirect URIs**: Optional – nur aktivieren, wenn du mehrere Redirect URIs benötigst (z.B. für verschiedene Umgebungen)
+   - **Enable One Time Token Mode**: **NICHT aktivieren** – Diese Option würde verhindern, dass Refresh Tokens mehrfach verwendet werden können. Das Projekt nutzt Refresh Tokens automatisch zur Token-Erneuerung.
+   - **Sync to China**: Nur aktivieren, wenn du die Application in China verwenden möchtest
+   
+   **Hinweis:** Der Application Type wird automatisch basierend auf dem gewählten OAuth Flow bestimmt (bei Authorization Code Grant ist das "Server Application").
+4. Nach dem Speichern erhältst du:
+   - **Client ID** (sichtbar in der Übersicht)
+   - **Client Secret** (wird nur einmal angezeigt – **sofort kopieren und sicher speichern!**)
+
+### 2. Lokale Umgebung einrichten
+
 ```bash
 cd /Users/tim/Development/HomeConnectCoffee
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env  # Zugangsdaten eintragen
+make init  # oder manuell: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 ```
 
-` .env` muss folgende Werte enthalten:
+### 3. .env Datei erstellen und ausfüllen
 
-```
-HOME_CONNECT_CLIENT_ID=
-HOME_CONNECT_CLIENT_SECRET=
+Erstelle eine `.env` Datei im Projektverzeichnis mit folgendem Inhalt:
+
+```bash
+HOME_CONNECT_CLIENT_ID=deine-client-id-hier
+HOME_CONNECT_CLIENT_SECRET=dein-client-secret-hier
 HOME_CONNECT_REDIRECT_URI=http://localhost:3000/callback
 HOME_CONNECT_HAID=
 HOME_CONNECT_SCOPE=IdentifyAppliance Control CoffeeMaker Settings Monitor
 ```
 
+**Wichtig:**
+- Trage die **Client ID** und das **Client Secret** aus Schritt 1 ein (aus der Application-Übersicht kopieren)
+- Die **HAID** (Home Appliance ID) lässt du zunächst leer – diese findest du nach dem ersten Auth-Flow heraus (siehe nächster Schritt)
+- Die **Redirect URI** muss exakt mit der in der Application-Registrierung übereinstimmen
+- Die **Scopes** werden beim Auth-Flow angefordert (nicht bei der Application-Registrierung). Die hier angegebenen Scopes werden in der Authorization-URL verwendet.
+
+### 4. HAID herausfinden (nach erstem Auth-Flow)
+
+Die HAID findest du nach erfolgreicher Authentifizierung:
+
+1. Führe den Auth-Flow aus (siehe nächster Abschnitt)
+2. Danach kannst du mit `make status` oder `python -m scripts.device_status` alle registrierten Geräte anzeigen
+3. Die HAID steht im JSON-Output unter `data.homeappliances[].haid`
+4. Trage diese HAID in deine `.env` Datei ein
+
 ## Autorisierung anstoßen
 
 ```bash
-python -m scripts.start_auth_flow
+make auth
+```
+
+oder
+
+```bash
+make auth AUTH_ARGS="--open-browser"
 ```
 
 Der Befehl öffnet (bzw. zeigt) die Authorize-URL. Nach Login erhältst du einen `code`, den du ins Terminal kopierst. Das Skript speichert `tokens.json` mit Access- und Refresh-Token.
 
-## Espresso starten
+**Tipp:** Mit `--open-browser` öffnet sich der Browser automatisch. Mit `--code "DEIN_CODE"` kannst du den Code direkt als Argument übergeben.
+
+## Gerät aktivieren
+
+Wenn das Gerät im Standby-Modus ist, kannst du es per API aktivieren:
 
 ```bash
-python -m scripts.brew_espresso --fill-ml 60
+make wake
 ```
 
-Das Skript:
-- wählt das gewünschte Programm (`Beverage.Espresso`)
-- setzt optional Menge, Stärke etc.
-- startet das Programm und zeigt den Status.
+Das Skript prüft den PowerState und aktiviert das Gerät automatisch, falls es im Standby ist.
+
+## Espresso starten
+
+Das `make brew` Kommando aktiviert das Gerät automatisch aus dem Standby (falls nötig), wählt das Espresso-Programm aus und startet es.
+
+### Standard-Espresso (50 ml)
+
+```bash
+make brew
+```
+
+### Individuelle Füllmenge
+
+Die Füllmenge kann zwischen 35-50 ml gewählt werden:
+
+```bash
+make brew FILL_ML=40
+```
+
+oder
+
+```bash
+make brew FILL_ML=50
+```
+
+### Mit Status-Überwachung
+
+Um den Status während der Zubereitung zu überwachen:
+
+```bash
+make brew BREW_ARGS="--poll"
+```
+
+### Kombinierte Optionen
+
+```bash
+# 45 ml mit Status-Überwachung
+make brew FILL_ML=45 BREW_ARGS="--poll"
+```
+
+### Direktes Python-Skript
+
+Alternativ kannst du das Skript auch direkt aufrufen:
+
+```bash
+python -m scripts.brew_espresso --fill-ml 50 --poll
+```
+
+**Hinweis:** Das Skript aktiviert das Gerät automatisch aus dem Standby, falls nötig. Die Füllmenge muss zwischen 35-50 ml liegen (gerätespezifische Einschränkung).
+
+## Verfügbare Makefile-Kommandos
+
+| Kommando | Beschreibung |
+|----------|--------------|
+| `make init` | Richtet die virtuelle Umgebung ein und installiert Dependencies |
+| `make auth` | Startet den OAuth-Flow zur Authentifizierung |
+| `make wake` | Aktiviert das Gerät aus dem Standby-Modus |
+| `make status` | Zeigt alle registrierten Geräte und den aktuellen Status |
+| `make brew` | Startet einen Espresso (aktiviert Gerät automatisch) |
+| `make events` | Überwacht den Event-Stream in Echtzeit |
+| `make clean_tokens` | Löscht die gespeicherten Tokens |
+
+### Beispiele
+
+```bash
+# Gerät aktivieren
+make wake
+
+# Status abrufen
+make status
+
+# Espresso mit Standard-Einstellungen (50 ml)
+make brew
+
+# Espresso mit individueller Menge
+make brew FILL_ML=40
+
+# Espresso mit Status-Überwachung
+make brew BREW_ARGS="--poll"
+
+# Events überwachen (bricht nach 10 Events ab)
+make events EVENTS_LIMIT=10
+```
 
 ## Weitere Ideen
 

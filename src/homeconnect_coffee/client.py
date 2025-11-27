@@ -40,6 +40,14 @@ class HomeConnectClient:
     ) -> Dict[str, Any]:
         url = f"{BASE_API}{endpoint}"
         resp = requests.request(method, url, headers=self._headers(), json=json_payload, timeout=30)
+        if not resp.ok:
+            error_detail = resp.text
+            try:
+                error_json = resp.json()
+                error_detail = error_json.get("error", error_json.get("description", error_detail))
+            except Exception:
+                pass
+            raise RuntimeError(f"API-Anfrage fehlgeschlagen ({resp.status_code}): {error_detail}")
         resp.raise_for_status()
         if resp.status_code == 204:
             return {}
@@ -75,8 +83,55 @@ class HomeConnectClient:
 
     def start_program(self, haid: Optional[str] = None) -> Dict[str, Any]:
         haid = haid or self.config.haid
-        return self._request("PUT", f"/homeappliances/{haid}/programs/active", json_payload={})
+        # Hole das ausgewählte Programm und verwende es als Payload
+        # Die API erwartet das data-Objekt des ausgewählten Programms
+        selected = self._request("GET", f"/homeappliances/{haid}/programs/selected")
+        program_data = selected.get("data", {})
+        
+        # Filtere Optionen, die möglicherweise nicht unterstützt werden
+        # (z.B. AromaSelect wird von manchen Geräten nicht unterstützt)
+        options = program_data.get("options", [])
+        # Entferne AromaSelect, da es oft nicht unterstützt wird
+        filtered_options = [
+            opt for opt in options
+            if opt.get("key") != "ConsumerProducts.CoffeeMaker.Option.AromaSelect"
+        ]
+        
+        payload = {
+            "data": {
+                "key": program_data.get("key"),
+                "options": filtered_options,
+            }
+        }
+        return self._request("PUT", f"/homeappliances/{haid}/programs/active", json_payload=payload)
 
     def stop_program(self, haid: Optional[str] = None) -> Dict[str, Any]:
         haid = haid or self.config.haid
         return self._request("DELETE", f"/homeappliances/{haid}/programs/active")
+
+    def clear_selected_program(self, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Löscht das aktuell ausgewählte Programm."""
+        haid = haid or self.config.haid
+        return self._request("DELETE", f"/homeappliances/{haid}/programs/selected")
+
+    def get_settings(self, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Ruft die Einstellungen des Geräts ab."""
+        haid = haid or self.config.haid
+        return self._request("GET", f"/homeappliances/{haid}/settings")
+
+    def set_setting(self, key: str, value: Any, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Setzt eine Einstellung des Geräts."""
+        haid = haid or self.config.haid
+        payload = {"data": {"key": key, "value": value}}
+        return self._request("PUT", f"/homeappliances/{haid}/settings/{key}", json_payload=payload)
+
+    def get_commands(self, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Ruft die verfügbaren Commands des Geräts ab."""
+        haid = haid or self.config.haid
+        return self._request("GET", f"/homeappliances/{haid}/commands")
+
+    def execute_command(self, command_key: str, *, data: Optional[Dict[str, Any]] = None, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Führt einen Command am Gerät aus."""
+        haid = haid or self.config.haid
+        payload = {"data": data or {}}
+        return self._request("POST", f"/homeappliances/{haid}/commands/{command_key}", json_payload=payload)

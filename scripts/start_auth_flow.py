@@ -17,6 +17,11 @@ def main() -> None:
         action="store_true",
         help="Versucht, die Authorize-URL automatisch im Standardbrowser zu öffnen.",
     )
+    parser.add_argument(
+        "--code",
+        type=str,
+        help="Authorization Code direkt als Argument übergeben (optional).",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -28,7 +33,11 @@ def main() -> None:
     if args.open_browser:
         webbrowser.open(authorize_url)
 
-    code = input("\nAuthorization Code eingeben: ").strip()
+    if args.code:
+        code = args.code.strip()
+    else:
+        code = input("\nAuthorization Code eingeben: ").strip()
+    
     if not code:
         raise SystemExit("Kein Code angegeben.")
 

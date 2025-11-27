@@ -23,7 +23,6 @@ REQUIRED_VARS = {
     "HOME_CONNECT_CLIENT_ID": "client_id",
     "HOME_CONNECT_CLIENT_SECRET": "client_secret",
     "HOME_CONNECT_REDIRECT_URI": "redirect_uri",
-    "HOME_CONNECT_HAID": "haid",
 }
 
 
@@ -38,12 +37,13 @@ def load_config() -> HomeConnectConfig:
         "IdentifyAppliance Control CoffeeMaker Settings Monitor",
     )
     token_path = Path(os.getenv("HOME_CONNECT_TOKEN_PATH", "tokens.json")).expanduser()
+    haid = os.getenv("HOME_CONNECT_HAID", "")
 
     return HomeConnectConfig(
         client_id=os.environ["HOME_CONNECT_CLIENT_ID"],
         client_secret=os.environ["HOME_CONNECT_CLIENT_SECRET"],
         redirect_uri=os.environ["HOME_CONNECT_REDIRECT_URI"],
-        haid=os.environ["HOME_CONNECT_HAID"],
+        haid=haid,
         scope=scope,
         token_path=token_path,
     )

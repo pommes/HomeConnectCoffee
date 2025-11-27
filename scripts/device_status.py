@@ -16,9 +16,13 @@ def main() -> None:
     print("[bold]Registrierte Geräte:[/bold]")
     print(json.dumps(appliances, indent=2))
 
-    status = client.get_status()
-    print("\n[bold]Aktueller Status der Kaffeemaschine:[/bold]")
-    print(json.dumps(status, indent=2))
+    if config.haid:
+        status = client.get_status()
+        print("\n[bold]Aktueller Status der Kaffeemaschine:[/bold]")
+        print(json.dumps(status, indent=2))
+    else:
+        print("\n[bold yellow]Hinweis:[/bold yellow] Keine HAID in der .env Datei konfiguriert.")
+        print("Trage die HAID aus der Geräteliste oben in deine .env Datei ein.")
 
 
 if __name__ == "__main__":

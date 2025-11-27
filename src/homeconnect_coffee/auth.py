@@ -82,6 +82,14 @@ def build_authorize_url(config: HomeConnectConfig, state: str | None = None) -> 
 def _token_request(config: HomeConnectConfig, data: Dict[str, str]) -> TokenBundle:
     auth = (config.client_id, config.client_secret)
     response = requests.post(TOKEN_ENDPOINT, data=data, auth=auth, timeout=30)
+    if not response.ok:
+        error_detail = response.text
+        try:
+            error_json = response.json()
+            error_detail = error_json.get("error_description", error_json.get("error", error_detail))
+        except Exception:
+            pass
+        raise RuntimeError(f"Token-Anfrage fehlgeschlagen ({response.status_code}): {error_detail}")
     response.raise_for_status()
     return TokenBundle.from_response(response.json())
 
