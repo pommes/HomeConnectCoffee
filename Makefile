@@ -61,7 +61,7 @@ $(CERT_FILE) $(KEY_FILE): $(CERT_DIR)
 	@echo "Erstelle selbstsigniertes Zertifikat..."
 	openssl req -x509 -newkey rsa:4096 -keyout $(KEY_FILE) -out $(CERT_FILE) \
 		-days 3650 -nodes -subj "/CN=HomeConnectCoffee/O=HomeConnect Coffee/C=DE" \
-		-addext "subjectAltName=DNS:localhost,DNS:*.local,IP:127.0.0.1"
+		-addext "subjectAltName=DNS:localhost,DNS:*.local,DNS:elias.local,IP:127.0.0.1"
 	@chmod 600 $(KEY_FILE)
 	@chmod 644 $(CERT_FILE)
 	@echo "Zertifikat erstellt: $(CERT_FILE)"

@@ -249,7 +249,7 @@ make cert
 make cert_install
 ```
 
-Das Zertifikat wird im `certs/` Verzeichnis erstellt und ist für `localhost` und `*.local` Domains gültig.
+Das Zertifikat wird im `certs/` Verzeichnis erstellt und ist für `localhost`, `*.local` und explizit `elias.local` gültig.
 
 ### Zertifikat auf iOS installieren
 
@@ -275,6 +275,14 @@ Für die Verwendung mit Apple Shortcuts auf iOS/iPadOS musst du das Zertifikat a
    - Tippe auf "HomeConnect Coffee" (unter "Zertifikat")
    - Tippe auf "Installieren" und bestätige
 
+4. **WICHTIG - Zertifikat als vertrauenswürdig markieren:**
+   - Gehe zu **Einstellungen → Allgemein → Info**
+   - Scrolle nach unten zu **Zertifikatvertrauenseinstellungen**
+   - **Aktiviere den Schalter** bei "HomeConnect Coffee" unter "Root-Zertifikate" (muss grün sein!)
+   - Bestätige die Warnung mit "Vertrauen"
+   
+   **Ohne diesen Schritt funktioniert das Zertifikat nicht, auch wenn es installiert ist!**
+
 #### Methode 2: Download über Browser
 
 1. **Server starten** (falls noch nicht gestartet):
@@ -295,9 +303,13 @@ Für die Verwendung mit Apple Shortcuts auf iOS/iPadOS musst du das Zertifikat a
    - Tippe auf "HomeConnect Coffee" (unter "Zertifikat")
    - Tippe auf "Installieren" und bestätige
 
-**Hinweis:** Nach der Installation musst du das Zertifikat als vertrauenswürdig markieren:
-- **Einstellungen → Allgemein → Über → Zertifikatvertrauenseinstellungen**
-- Aktiviere "HomeConnect Coffee" unter "Root-Zertifikate"
+4. **WICHTIG - Zertifikat als vertrauenswürdig markieren:**
+   - Gehe zu **Einstellungen → Allgemein → Über**
+   - Scrolle nach unten zu **Zertifikatvertrauenseinstellungen**
+   - **Aktiviere den Schalter** bei "HomeConnect Coffee" unter "Root-Zertifikate" (muss grün sein!)
+   - Bestätige die Warnung mit "Vertrauen"
+   
+   **Ohne diesen Schritt funktioniert das Zertifikat nicht, auch wenn es installiert ist!**
 
 ### Authentifizierung
 
@@ -336,7 +348,12 @@ curl https://elias.local:8080/wake?token=mein-token
    - Oder mit Header: Füge **"Header anfordern"** hinzu mit `Authorization: Bearer DEIN_TOKEN`
    - Aktiviere **"Mit Siri verwenden"`
 
-   **Hinweis:** Bei HTTPS mit selbstsigniertem Zertifikat musst du das Zertifikat zuerst im iOS-Gerät installieren oder die Zertifikatsprüfung in den Shortcuts deaktivieren.
+   **WICHTIG - Zertifikat auf iOS:**
+   - Das Zertifikat muss auf dem iOS-Gerät installiert sein (siehe "Zertifikat auf iOS installieren" oben)
+   - **Zusätzlich** musst du das Zertifikat als vertrauenswürdig markieren:
+     - **Einstellungen → Allgemein → Info → Zertifikatvertrauenseinstellungen**
+     - **Aktiviere den Schalter** bei "HomeConnect Coffee" (muss grün sein!)
+   - Ohne diesen Schritt funktioniert das Zertifikat nicht, auch wenn es installiert ist!
 
 **Verfügbare Endpoints:**
 - `GET /cert` - Download SSL-Zertifikat (öffentlich, keine Authentifizierung)
