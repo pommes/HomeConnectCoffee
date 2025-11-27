@@ -150,6 +150,9 @@ python -m scripts.brew_espresso --fill-ml 50 --poll
 | `make brew` | Startet einen Espresso (aktiviert Gerät automatisch) |
 | `make events` | Überwacht den Event-Stream in Echtzeit |
 | `make server` | Startet HTTP-Server für Siri Shortcuts Integration |
+| `make cert` | Erstellt selbstsigniertes SSL-Zertifikat |
+| `make cert_install` | Installiert Zertifikat im Mac Schlüsselbund |
+| `make cert_export` | Öffnet Finder mit Zertifikat für AirDrop-Transfer |
 | `make clean_tokens` | Löscht die gespeicherten Tokens |
 
 ### Beispiele
@@ -223,28 +226,120 @@ Für iOS/iPadOS ist ein HTTP-Server die bessere Lösung:
    ```
    Finde deine Mac-IP-Adresse mit: `ifconfig | grep "inet "`
 
-3. **Logging deaktivieren:** Wenn du keine Request-Logs sehen möchtest:
+3. **Mit Authentifizierung und TLS:**
+   ```bash
+   make server SERVER_ARGS="--host 0.0.0.0 --port 8080 --api-token mein-token --cert certs/server.crt --key certs/server.key"
+   ```
+
+4. **Logging deaktivieren:** Wenn du keine Request-Logs sehen möchtest:
    ```bash
    make server SERVER_ARGS="--no-log"
    ```
-   Standardmäßig ist Logging aktiviert und zeigt alle Requests mit Zeitstempel, IP-Adresse, Methode, Pfad und Status-Code.
+   Standardmäßig ist Logging aktiviert und zeigt alle Requests mit Zeitstempel, IP-Adresse, Methode, Pfad und Status-Code. **Token werden im Log automatisch maskiert** (als `***` angezeigt).
+
+### SSL/TLS Zertifikat erstellen
+
+Für HTTPS benötigst du ein SSL-Zertifikat:
+
+```bash
+# Zertifikat erstellen
+make cert
+
+# Zertifikat im Mac Schlüsselbund installieren (für vertrauenswürdige Verbindungen)
+make cert_install
+```
+
+Das Zertifikat wird im `certs/` Verzeichnis erstellt und ist für `localhost` und `*.local` Domains gültig.
+
+### Zertifikat auf iOS installieren
+
+Für die Verwendung mit Apple Shortcuts auf iOS/iPadOS musst du das Zertifikat auf deinem Gerät installieren. Es gibt zwei Methoden:
+
+#### Methode 1: AirDrop (empfohlen)
+
+1. **Zertifikat für AirDrop vorbereiten:**
+   ```bash
+   make cert_export
+   ```
+   Dies öffnet den Finder mit dem Zertifikat.
+
+2. **Per AirDrop senden:**
+   - Wähle die Datei `server.crt` im Finder aus
+   - Rechtsklick → Teilen → AirDrop
+   - Wähle dein iOS-Gerät aus
+
+3. **Auf iOS installieren:**
+   - Öffne die Datei auf dem iOS-Gerät
+   - Tippe auf "Installieren"
+   - Gehe zu **Einstellungen → Allgemein → VPN & Geräteverwaltung**
+   - Tippe auf "HomeConnect Coffee" (unter "Zertifikat")
+   - Tippe auf "Installieren" und bestätige
+
+#### Methode 2: Download über Browser
+
+1. **Server starten** (falls noch nicht gestartet):
+   ```bash
+   make server SERVER_ARGS="--host 0.0.0.0 --port 8080 --cert certs/server.crt --key certs/server.key"
+   ```
+
+2. **Zertifikat auf iOS herunterladen:**
+   - Öffne Safari auf deinem iOS-Gerät
+   - Navigiere zu: `https://DEINE_MAC_IP:8080/cert` (z.B. `https://elias.local:8080/cert`)
+   - **Wichtig:** Bei der Warnung "Ungültiges Zertifikat" tippe auf "Erweitert" → "Trotzdem fortfahren"
+   - Das Zertifikat wird heruntergeladen
+
+3. **Zertifikat installieren:**
+   - Öffne die heruntergeladene Datei
+   - Tippe auf "Installieren"
+   - Gehe zu **Einstellungen → Allgemein → VPN & Geräteverwaltung**
+   - Tippe auf "HomeConnect Coffee" (unter "Zertifikat")
+   - Tippe auf "Installieren" und bestätige
+
+**Hinweis:** Nach der Installation musst du das Zertifikat als vertrauenswürdig markieren:
+- **Einstellungen → Allgemein → Über → Zertifikatvertrauenseinstellungen**
+- Aktiviere "HomeConnect Coffee" unter "Root-Zertifikate"
+
+### Authentifizierung
+
+Der Server unterstützt Token-basierte Authentifizierung:
+
+**Option 1: Bearer Token im Header**
+```bash
+curl -H "Authorization: Bearer mein-token" https://elias.local:8080/wake
+```
+
+**Option 2: Token als URL-Parameter**
+```bash
+curl https://elias.local:8080/wake?token=mein-token
+```
+
+**Hinweis:** Token in URL-Parametern werden im Log automatisch als `***` maskiert.
+
+**Token setzen:**
+- Als Kommandozeilen-Argument: `--api-token mein-token`
+- Oder als Umgebungsvariable: `COFFEE_API_TOKEN=mein-token`
 
 3. **Erstelle Shortcuts in der Shortcuts App:**
 
-   **Wake (Gerät aktivieren):**
+   **Wake (Gerät aktivieren) - mit Token:**
    - Füge eine **"URL abrufen"** Aktion hinzu
-   - URL: `http://DEINE_MAC_IP:8080/wake`
+   - URL: `https://DEINE_MAC_IP:8080/wake?token=DEIN_TOKEN`
+   - Oder mit Header: Füge **"Header anfordern"** hinzu mit `Authorization: Bearer DEIN_TOKEN`
    - Aktiviere **"Mit Siri verwenden"**
 
-   **Brew (Espresso starten):**
+   **Brew (Espresso starten) - mit Token:**
    - Füge eine **"URL abrufen"** Aktion hinzu
    - Methode: **POST**
-   - URL: `http://DEINE_MAC_IP:8080/brew`
+   - URL: `https://DEINE_MAC_IP:8080/brew?token=DEIN_TOKEN`
    - Request Body: JSON
    - Body-Inhalt: `{"fill_ml": 50}`
+   - Oder mit Header: Füge **"Header anfordern"** hinzu mit `Authorization: Bearer DEIN_TOKEN`
    - Aktiviere **"Mit Siri verwenden"`
 
+   **Hinweis:** Bei HTTPS mit selbstsigniertem Zertifikat musst du das Zertifikat zuerst im iOS-Gerät installieren oder die Zertifikatsprüfung in den Shortcuts deaktivieren.
+
 **Verfügbare Endpoints:**
+- `GET /cert` - Download SSL-Zertifikat (öffentlich, keine Authentifizierung)
 - `GET /wake` - Aktiviert das Gerät
 - `GET /status` - Zeigt den Gerätestatus
 - `POST /brew` - Startet einen Espresso (JSON: `{"fill_ml": 50}`)

@@ -17,7 +17,7 @@ FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: init init_venv install_deps auth brew status events wake server clean_tokens
+.PHONY: init init_venv install_deps auth brew status events wake server clean_tokens cert cert_install cert_export
 
 init: init_venv install_deps
 
@@ -47,4 +47,36 @@ server: init
 
 clean_tokens:
 	rm -f $(HOME_CONNECT_TOKEN_PATH) tokens.json
+
+CERT_DIR := $(THIS_DIR)/certs
+CERT_FILE := $(CERT_DIR)/server.crt
+KEY_FILE := $(CERT_DIR)/server.key
+
+cert: $(CERT_FILE) $(KEY_FILE)
+
+$(CERT_DIR):
+	mkdir -p $(CERT_DIR)
+
+$(CERT_FILE) $(KEY_FILE): $(CERT_DIR)
+	@echo "Erstelle selbstsigniertes Zertifikat..."
+	openssl req -x509 -newkey rsa:4096 -keyout $(KEY_FILE) -out $(CERT_FILE) \
+		-days 3650 -nodes -subj "/CN=HomeConnectCoffee/O=HomeConnect Coffee/C=DE" \
+		-addext "subjectAltName=DNS:localhost,DNS:*.local,IP:127.0.0.1"
+	@chmod 600 $(KEY_FILE)
+	@chmod 644 $(CERT_FILE)
+	@echo "Zertifikat erstellt: $(CERT_FILE)"
+	@echo "Private Key erstellt: $(KEY_FILE)"
+
+cert_install: $(CERT_FILE)
+	@echo "Installiere Zertifikat im Mac Schlüsselbund..."
+	security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db $(CERT_FILE) || \
+	security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain $(CERT_FILE) || \
+	security add-trusted-cert -d -r trustRoot $(CERT_FILE)
+	@echo "Zertifikat wurde im Schlüsselbund installiert."
+
+cert_export: $(CERT_FILE)
+	@echo "Öffne Finder mit Zertifikat für AirDrop..."
+	@open -R $(CERT_FILE)
+	@echo "Zertifikat-Datei wurde im Finder geöffnet."
+	@echo "Du kannst es jetzt per AirDrop zu deinem iOS-Gerät senden."
 
