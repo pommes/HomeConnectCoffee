@@ -56,14 +56,24 @@ Das HomeConnect Coffee Projekt ist eine Python-Anwendung zur Steuerung von HomeC
 
 ### HTTP-Server (`scripts/server.py`)
 
-#### `CoffeeHandler` - HTTP Request Handler
-- **Größe:** 815 Zeilen (zu groß - Single Responsibility verletzt)
-- **Verantwortlichkeiten:**
-  - HTTP-Request-Handling
-  - Authentifizierung
-  - Business-Logic (Wake, Brew, Status)
-  - Event-Stream-Management
-  - Dashboard-Serving
+#### Server-Architektur
+- **Größe:** ~180 Zeilen (deutlich reduziert durch Refactoring)
+- **Verantwortlichkeit:** Server-Initialisierung und Konfiguration
+- **Komponenten:**
+  - Initialisiert `HistoryManager`, `EventStreamManager`, `ErrorHandler`, `AuthMiddleware`
+  - Konfiguriert `RequestRouter` mit Middleware und Error-Handler
+  - Startet `ThreadingHTTPServer` für parallele Request-Verarbeitung
+
+#### Request-Routing (`handlers/router.py`)
+
+**`RequestRouter`** - Zentrale Request-Weiterleitung
+- Leitet Requests an spezialisierte Handler weiter
+- Verwendet `AuthMiddleware` für geschützte Endpoints
+- Routing-Logik:
+  - `/wake`, `/brew` → `CoffeeHandler`
+  - `/status`, `/api/status` → `StatusHandler`
+  - `/api/history`, `/api/stats` → `HistoryHandler`
+  - `/dashboard`, `/cert`, `/health`, `/events` → `DashboardHandler`
 
 **Endpoints:**
 - `GET /cert` - SSL-Zertifikat-Download (öffentlich)
@@ -77,29 +87,76 @@ Das HomeConnect Coffee Projekt ist eine Python-Anwendung zur Steuerung von HomeC
 - `GET /events` - Server-Sent Events Stream (öffentlich)
 - `POST /brew` - Espresso starten (authentifiziert)
 
-#### Globale Variablen (Problem)
-- `event_clients` - Liste verbundener SSE-Clients
-- `event_clients_lock` - Lock für Thread-Safety
-- `history_manager` - HistoryManager-Instanz
-- `event_stream_thread` - Event-Stream-Worker Thread
-- `event_stream_running` - Flag für Worker-Status
-- `event_stream_stop_event` - Event zum Stoppen des Workers
-- `history_queue` - Queue für asynchrones Event-Speichern
-- `history_worker_thread` - History-Worker Thread
+#### Handler (`handlers/`)
 
-#### Worker-Threads
+**`BaseHandler`** - Basis-Klasse für alle Handler
+- Gemeinsame Funktionalität: Authentifizierung, Error-Handling, JSON-Responses
+- Request-Parsing und Token-Maskierung für Logging
 
-**`event_stream_worker()`:**
-- Läuft kontinuierlich für Event-Persistierung
-- Verbindet mit HomeConnect Events-API
-- Speichert Events asynchron in History-Queue
-- Sendet Events an verbundene SSE-Clients
+**`CoffeeHandler`** - Coffee-Operationen (statische Methoden)
+- `handle_wake()` - Aktiviert das Gerät
+- `handle_brew()` - Startet einen Espresso
+- Verwendet `CoffeeService` für Business-Logic
+
+**`StatusHandler`** - Status-Endpoints (statische Methoden)
+- `handle_status()` - Gerätestatus
+- `handle_extended_status()` - Erweiterter Status mit Settings/Programmen
+- Verwendet `StatusService` für Business-Logic
+
+**`HistoryHandler`** - History-Endpoints (statische Methoden)
+- `handle_history()` - Event-History mit Pagination
+- `handle_api_stats()` - API-Call-Statistiken
+- Verwendet `HistoryService` für Datenabfragen
+
+**`DashboardHandler`** - Dashboard und öffentliche Endpoints (statische Methoden)
+- `handle_dashboard()` - Dashboard-HTML-Serving
+- `handle_cert_download()` - SSL-Zertifikat-Download
+- `handle_health()` - Health-Check
+- `handle_events_stream()` - Server-Sent Events Stream
+
+#### Middleware (`middleware/`)
+
+**`AuthMiddleware`** - Authentifizierungs-Middleware
+- Token-basierte Authentifizierung (Bearer Header oder Query-Parameter)
+- `check_auth()` - Prüft Authentifizierung
+- `require_auth()` - Prüft und sendet 401 bei Fehler
+- Callable-Interface: `middleware(router)`
+- Isoliert Authentifizierungslogik für einfache Erweiterung (z.B. OAuth)
+
+#### Services (`services/`)
+
+**`CoffeeService`** - Business-Logic für Coffee-Operationen
+- `wake_device()` - Aktiviert das Gerät
+- `brew_espresso()` - Startet einen Espresso mit Füllmenge
+- Kapselt HomeConnect API-Aufrufe
+
+**`StatusService`** - Business-Logic für Status-Abfragen
+- `get_status()` - Gerätestatus
+- `get_extended_status()` - Erweiterter Status mit Settings/Programmen
+- Kapselt HomeConnect API-Aufrufe
+
+**`HistoryService`** - Business-Logic für History-Abfragen
+- `get_history()` - Event-History mit Filterung und Pagination
+- `get_program_counts()` - Programm-Zählungen
+- `get_daily_usage()` - Tägliche Nutzungsstatistiken
+- Kapselt SQLite-Abfragen
+
+**`EventStreamManager`** - Event-Stream-Management
+- Kapselt Event-Stream-Worker und History-Worker
+- Verwaltet verbundene SSE-Clients
+- `start()` / `stop()` - Startet/stoppt Worker-Threads
+- `add_client()` / `remove_client()` - Client-Verwaltung
+- `broadcast_event()` - Sendet Events an alle Clients
 - Implementiert exponentielles Backoff bei 429-Fehlern
+- Persistiert Events asynchron in SQLite
 
-**`history_worker()`:**
-- Verarbeitet Events aus der Queue
-- Speichert Events in SQLite-Datenbank
-- Läuft asynchron, blockiert nicht den Haupt-Thread
+#### Error Handling (`errors.py`)
+
+**`ErrorHandler`** - Zentralisiertes Error-Handling
+- Klassifiziert Exceptions zu HTTP-Status-Codes
+- Strukturierte, farbige Logging-Ausgabe
+- Konsistente Error-Response-Formatierung
+- `ColoredFormatter` für Terminal-Ausgabe (orange für WARNING, rot für ERROR)
 
 ### CLI-Scripts (`scripts/`)
 
@@ -129,15 +186,19 @@ Das HomeConnect Coffee Projekt ist eine Python-Anwendung zur Steuerung von HomeC
 ```
 HomeConnect API
     ↓
-event_stream_worker()
+EventStreamManager._event_stream_worker()
     ↓
 history_queue (Queue)
     ↓
-history_worker()
+EventStreamManager._history_worker()
+    ↓
+HistoryManager.add_event()
     ↓
 SQLite (history.db)
     ↓
-event_clients (SSE)
+EventStreamManager.broadcast_event()
+    ↓
+SSE Clients
     ↓
 Dashboard (Browser)
 ```
@@ -147,11 +208,15 @@ Dashboard (Browser)
 ```
 HTTP Request
     ↓
-CoffeeHandler.do_GET() / do_POST()
+RequestRouter._route_request()
     ↓
-_check_auth() (wenn benötigt)
+AuthMiddleware.require_auth() (wenn geschützt)
     ↓
-load_config() + HomeConnectClient()
+Spezialisierter Handler (statische Methode)
+    ↓
+Service (CoffeeService, StatusService, etc.)
+    ↓
+HomeConnectClient
     ↓
 HomeConnect API
     ↓
@@ -165,39 +230,44 @@ Response
 - **history_worker:** Daemon-Thread, verarbeitet Queue
 - **Token-Refresh:** Lock verhindert Race-Conditions
 
-## Identifizierte Probleme
+## Architektur-Verbesserungen (Refactoring)
 
-### 1. Single Responsibility Principle verletzt
-- `server.py` ist mit 815 Zeilen zu groß
-- `CoffeeHandler` hat zu viele Verantwortlichkeiten:
-  - HTTP-Handling
-  - Business-Logic
-  - Event-Stream-Management
-  - Authentifizierung
+### 1. Service-Layer eingeführt
+- Business-Logic in separate Service-Klassen ausgelagert
+- `CoffeeService`, `StatusService`, `HistoryService` kapseln API-Aufrufe
+- Handler verwenden Services statt direkter API-Calls
+- Services sind isoliert testbar
 
-### 2. Globale Variablen
-- 8 globale Variablen in `server.py`
-- Erschwert Testing und Dependency Injection
-- Potenzielle Race-Conditions (trotz Locks)
+### 2. Handler aufgeteilt
+- Monolithischer `CoffeeHandler` (815 Zeilen) aufgeteilt in:
+  - `CoffeeHandler` - Coffee-Operationen (~90 Zeilen)
+  - `StatusHandler` - Status-Endpoints (~75 Zeilen)
+  - `HistoryHandler` - History-Endpoints (~105 Zeilen)
+  - `DashboardHandler` - Dashboard/öffentliche Endpoints (~177 Zeilen)
+  - `RequestRouter` - Request-Routing (~137 Zeilen)
+- Handler-Methoden sind statisch und nehmen Router als Parameter
+- Keine komplexe Initialisierung mehr nötig
 
-### 3. Fehlende Abstraktion
-- Business-Logic direkt im HTTP-Handler
-- Keine Service-Layer
-- Direkte Abhängigkeiten zu HomeConnectClient
+### 3. Event-Stream-Manager
+- Event-Stream-Logik in `EventStreamManager` Klasse gekapselt
+- Globale Variablen für Event-Stream entfernt
+- Thread-Management zentralisiert
+- Client-Verwaltung isoliert
 
-### 4. Error Handling
-- Inkonsistente Error-Responses
-- Keine strukturierten Logs
-- Fehler werden teilweise nur geloggt, nicht weitergegeben
+### 4. Authentifizierung als Middleware
+- `AuthMiddleware` kapselt Authentifizierungslogik
+- Isoliert und einfach erweiterbar (z.B. OAuth, API-Keys)
+- Handler verwenden Middleware optional (Rückwärtskompatibilität)
 
-### 5. Testing
-- Keine Unit-Tests vorhanden
-- Keine Integration-Tests
-- Schwer testbar durch globale Variablen
+### 5. Zentralisiertes Error-Handling
+- `ErrorHandler` für konsistente Error-Responses
+- Strukturiertes, farbiges Logging
+- Exception-Klassifizierung zu HTTP-Status-Codes
 
-### 6. Event-Stream-Worker
-- Läuft immer, auch wenn nicht benötigt
-- Könnte optimiert werden (nur bei Bedarf starten)
+### 6. Testing-Infrastruktur
+- `pytest` für Unit-Tests
+- 109 Tests mit >66% Code-Coverage
+- Services, Handler, Middleware isoliert testbar
 
 ## Abhängigkeiten
 
@@ -217,9 +287,26 @@ Response
 - Asynchrones Event-Speichern über Queue
 - ThreadingHTTPServer für parallele Requests
 - Cursor-basierte Pagination für große Event-Listen
+- Service-Layer ermöglicht Caching und Optimierungen
 
 ### Potenzielle Bottlenecks
-- Event-Stream-Worker läuft immer (auch ohne Clients)
-- Globale Locks könnten bei hoher Last problematisch sein
+- Event-Stream-Worker läuft kontinuierlich für Event-Persistierung
 - Keine Connection-Pooling für HomeConnect API
+- SQLite kann bei sehr hoher Last limitiert sein (für Raspberry Pi Zero ausreichend)
+
+## Code-Statistiken
+
+### Nach Refactoring
+- `server.py`: ~180 Zeilen (vorher: 815 Zeilen)
+- Handler gesamt: ~600 Zeilen (aufgeteilt in 5 Dateien)
+- Services: ~260 Zeilen (4 Service-Klassen)
+- Middleware: ~96 Zeilen (1 Middleware-Klasse)
+- Error-Handling: ~338 Zeilen (1 ErrorHandler-Klasse)
+- Tests: 109 Unit-Tests mit >66% Code-Coverage
+
+### Verbesserungen
+- **Single Responsibility**: Jede Klasse hat eine klare Verantwortlichkeit
+- **Testbarkeit**: Alle Komponenten isoliert testbar
+- **Wartbarkeit**: Kleinere, fokussierte Dateien
+- **Erweiterbarkeit**: Middleware-Pattern ermöglicht einfache Erweiterungen
 
