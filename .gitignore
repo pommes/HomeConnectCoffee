@@ -8,4 +8,5 @@ history.json
 history.json.backup
 history.db
 history.db-*
+api_stats.json
 

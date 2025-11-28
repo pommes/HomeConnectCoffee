@@ -25,6 +25,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 import requests
 from sseclient import SSEClient
 
+from homeconnect_coffee.api_monitor import get_monitor
 from homeconnect_coffee.client import HomeConnectClient
 from homeconnect_coffee.config import load_config
 from homeconnect_coffee.history import HistoryManager
@@ -125,6 +126,10 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             elif path == "/api/history":
                 # History-Endpoint - öffentlich (nur Lesen)
                 self._handle_history()
+                return
+            elif path == "/api/stats":
+                # API-Statistiken - öffentlich (nur Lesen)
+                self._handle_api_stats()
                 return
             elif path == "/events":
                 # Events-Stream benötigt keinen Client - der Worker liefert die Events
@@ -344,6 +349,18 @@ class CoffeeHandler(BaseHTTPRequestHandler):
                 print(f"Fehler beim Laden der History: {e}")
             self._send_error(500, "Fehler beim Laden der History")
 
+    def _handle_api_stats(self) -> None:
+        """Gibt die API-Call-Statistiken zurück."""
+        try:
+            stats_path = Path(__file__).parent.parent / "api_stats.json"
+            monitor = get_monitor(stats_path)
+            stats = monitor.get_stats()
+            self._send_json(stats, status_code=200)
+        except Exception as e:
+            if CoffeeHandler.enable_logging:
+                print(f"Fehler beim Laden der API-Statistiken: {e}")
+            self._send_error(500, "Fehler beim Laden der API-Statistiken")
+
     def _handle_cert_download(self) -> None:
         """Stellt das SSL-Zertifikat zum Download bereit."""
         cert_path = Path(__file__).parent.parent / "certs" / "server.crt"
@@ -497,6 +514,11 @@ def event_stream_worker() -> None:
     Sendet Events nur an verbundene Clients (spart Ressourcen).
     """
     global history_manager, event_stream_running
+    
+    # Backoff-Variablen für Rate-Limiting
+    backoff_seconds = 60  # Start mit 60 Sekunden
+    max_backoff_seconds = 300  # Maximal 5 Minuten
+    consecutive_429_errors = 0
 
     while not event_stream_stop_event.is_set():
         try:
@@ -529,10 +551,37 @@ def event_stream_worker() -> None:
                     timeout=(10, None)  # 10 Sekunden für Verbindung, None für Stream
                 )
                 response.raise_for_status()
+                
+                # Erfolgreiche Verbindung - Backoff zurücksetzen
+                if consecutive_429_errors > 0:
+                    if CoffeeHandler.enable_logging:
+                        print(f"Events-Stream Worker: Verbindung erfolgreich, Backoff zurückgesetzt")
+                    consecutive_429_errors = 0
+                    backoff_seconds = 60
+                    
+            except requests.exceptions.HTTPError as e:
+                # Spezielle Behandlung für 429 (Too Many Requests)
+                if e.response is not None and e.response.status_code == 429:
+                    consecutive_429_errors += 1
+                    if CoffeeHandler.enable_logging:
+                        print(f"Events-Stream Worker: Rate-Limit erreicht (429). Warte {backoff_seconds}s vor erneutem Versuch...")
+                    
+                    time.sleep(backoff_seconds)
+                    
+                    # Exponentielles Backoff: Verdopple Wartezeit, aber max. 5 Minuten
+                    backoff_seconds = min(backoff_seconds * 2, max_backoff_seconds)
+                    continue
+                else:
+                    # Andere HTTP-Fehler
+                    if CoffeeHandler.enable_logging:
+                        print(f"Events-Stream Worker: HTTP-Fehler: {e}")
+                    time.sleep(10)
+                    continue
             except requests.exceptions.RequestException as e:
+                # Andere Verbindungsfehler (Timeout, ConnectionError, etc.)
                 if CoffeeHandler.enable_logging:
                     print(f"Events-Stream Worker: Verbindungsfehler: {e}")
-                time.sleep(10)  # Längere Pause bei Verbindungsfehlern
+                time.sleep(10)  # Normale Pause bei Verbindungsfehlern
                 continue
 
             if CoffeeHandler.enable_logging:
@@ -692,6 +741,11 @@ def main() -> None:
     history_path = Path(__file__).parent.parent / "history.json"
     history_manager = HistoryManager(history_path)
 
+    # API-Call-Monitor initialisieren
+    stats_path = Path(__file__).parent.parent / "api_stats.json"
+    monitor = get_monitor(stats_path)
+    monitor.print_stats()  # Zeige aktuelle Statistiken beim Start
+
     # History-Worker Thread starten (für asynchrones Speichern)
     history_worker_thread = threading.Thread(target=history_worker, daemon=True)
     history_worker_thread.start()
@@ -721,6 +775,7 @@ def main() -> None:
     print(f"   - GET  /status      - Zeigt den Status")
     print(f"   - GET  /api/status  - Erweiterter Status (Settings, Programme)")
     print(f"   - GET  /api/history - Verlaufsdaten (öffentlich)")
+    print(f"   - GET  /api/stats   - API-Call-Statistiken (öffentlich)")
     print(f"   - GET  /events      - Live Events-Stream (SSE)")
     print(f"   - POST /brew        - Startet einen Espresso (JSON: {{\"fill_ml\": 50}})")
     if CoffeeHandler.enable_logging:

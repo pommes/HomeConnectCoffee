@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from .api_monitor import record_api_call
 from .auth import TokenBundle, refresh_access_token
 from .config import HomeConnectConfig
 
@@ -51,6 +52,9 @@ class HomeConnectClient:
     def _request(
         self, method: str, endpoint: str, *, json_payload: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        # API-Call für Monitoring aufzeichnen
+        record_api_call(endpoint, method)
+        
         url = f"{BASE_API}{endpoint}"
         # Timeout: 10 Sekunden für Verbindung, 30 Sekunden insgesamt
         resp = requests.request(method, url, headers=self._headers(), json=json_payload, timeout=(10, 30))

@@ -223,11 +223,14 @@
         // Initialisierung
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
-            loadInitialData();
-            loadEventHistory(); // Lade persistierte Events
-            connectEventStream();
             setupInfiniteScroll();
-            setInterval(loadInitialData, 30000); // Alle 30 Sekunden aktualisieren
+            // Lade Daten - Initial Data zuerst, dann Event History
+            loadInitialData().then(() => {
+                // Event History nach Initial Data laden
+                loadEventHistory();
+            });
+            connectEventStream();
+            // Kein setInterval mehr - Updates kommen über Event-Stream
         });
 
         function initCharts() {
@@ -300,12 +303,30 @@
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     updateLiveStatus(statusData);
+                } else {
+                    // Fehler beim Laden des Status
+                    console.error('Fehler beim Laden des Status:', statusResponse.status, statusResponse.statusText);
+                    const liveStatusDiv = document.getElementById('liveStatus');
+                    if (liveStatusDiv && liveStatusDiv.querySelector('.loading')) {
+                        liveStatusDiv.innerHTML = `
+                            <div class="error">Fehler beim Laden des Status (${statusResponse.status})</div>
+                        `;
+                    }
                 }
 
                 // History laden
                 await loadHistory();
             } catch (error) {
                 console.error('Fehler beim Laden der Daten:', error);
+                // Zeige Fehler in der UI
+                const liveStatusDiv = document.getElementById('liveStatus');
+                if (liveStatusDiv) {
+                    if (liveStatusDiv.querySelector('.loading')) {
+                        liveStatusDiv.innerHTML = `
+                            <div class="error">Fehler beim Laden: ${error.message}</div>
+                        `;
+                    }
+                }
             }
         }
 
@@ -635,7 +656,8 @@
                 try {
                     const data = JSON.parse(event.data);
                     addEventToLog('STATUS', data);
-                    loadInitialData(); // Status neu laden
+                    // Kein loadInitialData() mehr - Updates kommen über Event-Stream
+                    // Status wird beim Initial Load geladen, danach nur noch via Events aktualisiert
                 } catch (e) {
                     console.error('Fehler beim Parsen von STATUS-Event:', e);
                 }
