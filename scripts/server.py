@@ -10,30 +10,20 @@ Oder: make server
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import ssl
 import threading
 import time
-from datetime import datetime
-from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, urlencode
-
-import requests
 
 from homeconnect_coffee.api_monitor import get_monitor
-from homeconnect_coffee.client import HomeConnectClient
-from homeconnect_coffee.config import load_config
-from homeconnect_coffee.errors import ErrorCode, ErrorHandler
+from homeconnect_coffee.errors import ErrorHandler
+from homeconnect_coffee.handlers import RequestRouter
+from homeconnect_coffee.handlers.dashboard_handler import DashboardHandler
+from homeconnect_coffee.handlers.history_handler import HistoryHandler
 from homeconnect_coffee.history import HistoryManager
-from homeconnect_coffee.services import (
-    CoffeeService,
-    EventStreamManager,
-    HistoryService,
-    StatusService,
-)
+from homeconnect_coffee.services import EventStreamManager
 
 
 # Globale Variablen (werden in main() initialisiert)
@@ -45,473 +35,6 @@ error_handler: ErrorHandler | None = None
 logger = logging.getLogger(__name__)
 
 
-class CoffeeHandler(BaseHTTPRequestHandler):
-    enable_logging = True
-    api_token: str | None = None
-
-    def handle_one_request(self):
-        """Überschreibt handle_one_request, um BrokenPipeError abzufangen."""
-        try:
-            super().handle_one_request()
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen - normal, nicht loggen
-            pass
-
-    def log_request(self, code="-", size="-"):
-        """Loggt Requests wenn Logging aktiviert ist."""
-        if self.enable_logging:
-            client_ip = self.client_address[0]
-            method = self.command
-            path = self._mask_token_in_path(self.path)
-            logger.info(f"{client_ip} - {method} {path} - {code}")
-
-    def _mask_token_in_path(self, path: str) -> str:
-        """Maskiert Token-Parameter im Pfad für das Logging."""
-        if "token=" not in path:
-            return path
-        
-        parsed = urlparse(path)
-        query_params = parse_qs(parsed.query)
-        
-        if "token" in query_params:
-            # Maskiere Token
-            query_params["token"] = ["__MASKED__"]
-            new_query = urlencode(query_params, doseq=True)
-            return f"{parsed.path}?{new_query}"
-        
-        return path
-
-    def _check_auth(self) -> bool:
-        """Prüft die Authentifizierung via Header oder Query-Parameter."""
-        if self.api_token is None:
-            return True  # Kein Token konfiguriert = offen
-
-        # Prüfe Authorization Header
-        auth_header = self.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            if token == self.api_token:
-                return True
-
-        # Prüfe Query-Parameter
-        parsed_path = urlparse(self.path)
-        query_params = parse_qs(parsed_path.query)
-        token_param = query_params.get("token", [None])[0]
-        if token_param == self.api_token:
-            return True
-
-        return False
-
-    def log_message(self, format, *args):
-        """Unterdrückt Standard-Logging-Nachrichten (nur log_request wird verwendet)."""
-        # Wir verwenden nur log_request für Request-Logging
-        pass
-
-    def do_GET(self):
-        """Behandelt GET-Requests für Wake und Status."""
-        try:
-            parsed_path = urlparse(self.path)
-            path = parsed_path.path
-
-            # Öffentliche Endpoints (keine Authentifizierung) - ZUERST prüfen!
-            # Diese Endpoints erstellen KEINEN Client und blockieren nicht
-            if path == "/cert":
-                self._handle_cert_download()
-                return
-            elif path == "/health":
-                self._send_json({"status": "ok"}, status_code=200)
-                return
-            elif path == "/dashboard":
-                self._handle_dashboard()
-                return
-            elif path == "/api/history":
-                # History-Endpoint - öffentlich (nur Lesen)
-                self._handle_history()
-                return
-            elif path == "/api/stats":
-                # API-Statistiken - öffentlich (nur Lesen)
-                self._handle_api_stats()
-                return
-            elif path == "/events":
-                # Events-Stream benötigt keinen Client - der Worker liefert die Events
-                # Öffentlich, da der Worker bereits authentifiziert ist
-                self._handle_events_stream()
-                return
-
-            # Prüfe Authentifizierung für alle anderen Endpoints
-            if not self._check_auth():
-                if error_handler:
-                    response = error_handler.create_error_response(
-                        ErrorCode.UNAUTHORIZED,
-                        "Unauthorized - Invalid or missing API token",
-                        ErrorCode.UNAUTHORIZED,
-                    )
-                    self._send_error_response(ErrorCode.UNAUTHORIZED, response)
-                else:
-                    self._send_error(401, "Unauthorized - Invalid or missing API token")
-                return
-
-            # Config und Client-Erstellung
-            try:
-                config = load_config()
-                client = HomeConnectClient(config)
-            except Exception as e:
-                if CoffeeHandler.enable_logging:
-                    print(f"Fehler beim Laden der Config/Client: {e}")
-                self._send_error(500, f"Fehler beim Initialisieren: {str(e)}")
-                return
-
-            if path == "/wake":
-                self._handle_wake(client)
-            elif path == "/status":
-                self._handle_status(client)
-            elif path == "/api/status":
-                self._handle_extended_status(client)
-            elif path == "/brew":
-                # Brew auch als GET unterstützen (mit Query-Parameter fill_ml)
-                parsed_path = urlparse(self.path)
-                query_params = parse_qs(parsed_path.query)
-                fill_ml_param = query_params.get("fill_ml", [None])[0]
-                fill_ml = int(fill_ml_param) if fill_ml_param and fill_ml_param.isdigit() else 50
-                self._handle_brew(client, fill_ml)
-            else:
-                if error_handler:
-                    response = error_handler.create_error_response(
-                        ErrorCode.NOT_FOUND,
-                        "Not Found",
-                        ErrorCode.NOT_FOUND,
-                    )
-                    self._send_error_response(ErrorCode.NOT_FOUND, response)
-                else:
-                    self._send_error(404, "Not Found")
-
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Verarbeiten der Anfrage")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, str(e))
-
-    def do_POST(self):
-        """Behandelt POST-Requests für Brew."""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
-
-        # Prüfe Authentifizierung
-        if not self._check_auth():
-            if error_handler:
-                response = error_handler.create_error_response(
-                    ErrorCode.UNAUTHORIZED,
-                    "Unauthorized - Invalid or missing API token",
-                    ErrorCode.UNAUTHORIZED,
-                )
-                self._send_error_response(ErrorCode.UNAUTHORIZED, response)
-            else:
-                self._send_error(401, "Unauthorized - Invalid or missing API token")
-            return
-
-        try:
-            # Config und Client-Erstellung
-            try:
-                config = load_config()
-                client = HomeConnectClient(config)
-            except Exception as e:
-                if error_handler:
-                    code, response = error_handler.handle_error(e, default_message="Fehler beim Initialisieren")
-                    self._send_error_response(code, response)
-                else:
-                    self._send_error(500, f"Fehler beim Initialisieren: {str(e)}")
-                return
-
-            if path == "/brew":
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(content_length).decode("utf-8")
-                data = json.loads(body) if body else {}
-                fill_ml = data.get("fill_ml", 50)
-                self._handle_brew(client, fill_ml)
-            else:
-                if error_handler:
-                    response = error_handler.create_error_response(
-                        ErrorCode.NOT_FOUND,
-                        "Not Found",
-                        ErrorCode.NOT_FOUND,
-                    )
-                    self._send_error_response(ErrorCode.NOT_FOUND, response)
-                else:
-                    self._send_error(404, "Not Found")
-
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Verarbeiten der Anfrage")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, str(e))
-
-    def _handle_wake(self, client: HomeConnectClient) -> None:
-        """Aktiviert das Gerät aus dem Standby."""
-        try:
-            coffee_service = CoffeeService(client)
-            result = coffee_service.wake_device()
-            self._send_json(result, status_code=200)
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Aktivieren")
-                self._send_error_response(code, response)
-            else:
-                if isinstance(e, requests.exceptions.Timeout):
-                    self._send_error(504, "API-Anfrage hat das Timeout überschritten")
-                else:
-                    self._send_error(500, f"Fehler beim Aktivieren: {str(e)}")
-
-    def _handle_status(self, client: HomeConnectClient) -> None:
-        """Gibt den Gerätestatus zurück."""
-        status_service = StatusService(client)
-        status = status_service.get_status()
-        self._send_json(status, status_code=200)
-
-    def _handle_extended_status(self, client: HomeConnectClient) -> None:
-        """Gibt erweiterten Status mit Settings und Programmen zurück."""
-        try:
-            status_service = StatusService(client)
-            extended_status = status_service.get_extended_status()
-            self._send_json(extended_status, status_code=200)
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Abrufen des Status")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, str(e))
-
-    def _handle_dashboard(self) -> None:
-        """Liefert die Dashboard-HTML-Seite."""
-        dashboard_path = Path(__file__).parent / "dashboard.html"
-        
-        if not dashboard_path.exists():
-            if error_handler:
-                response = error_handler.create_error_response(
-                    ErrorCode.NOT_FOUND,
-                    "Dashboard nicht gefunden",
-                    ErrorCode.FILE_ERROR,
-                )
-                self._send_error_response(ErrorCode.NOT_FOUND, response)
-            else:
-                self._send_error(404, "Dashboard nicht gefunden")
-            return
-        
-        try:
-            dashboard_html = dashboard_path.read_text(encoding="utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(dashboard_html.encode("utf-8"))
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Lesen des Dashboards")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, f"Fehler beim Lesen des Dashboards: {str(e)}")
-
-    def _handle_history(self) -> None:
-        """Gibt die Verlaufsdaten zurück."""
-        if history_manager is None:
-            if error_handler:
-                response = error_handler.create_error_response(
-                    ErrorCode.INTERNAL_SERVER_ERROR,
-                    "History-Manager nicht initialisiert",
-                    ErrorCode.INTERNAL_SERVER_ERROR,
-                )
-                self._send_error_response(ErrorCode.INTERNAL_SERVER_ERROR, response)
-            else:
-                self._send_error(500, "History-Manager nicht initialisiert")
-            return
-        
-        try:
-            history_service = HistoryService(history_manager)
-            
-            # Parse Query-Parameter
-            parsed_path = urlparse(self.path)
-            query_params = parse_qs(parsed_path.query)
-            
-            event_type = query_params.get("type", [None])[0]
-            limit = query_params.get("limit", [None])[0]
-            # Begrenze Limit auf maximal 1000, um Server-Überlastung zu vermeiden
-            limit_int = min(int(limit), 1000) if limit and limit.isdigit() else None
-            
-            # Cursor-basierte Pagination: before_timestamp
-            before_timestamp = query_params.get("before_timestamp", [None])[0]
-            
-            if query_params.get("daily_usage"):
-                # Tägliche Nutzung
-                days = min(int(query_params.get("days", ["7"])[0]), 365)  # Max 1 Jahr
-                usage = history_service.get_daily_usage(days)
-                self._send_json({"daily_usage": usage}, status_code=200)
-            elif query_params.get("program_counts"):
-                # Programm-Zählungen
-                counts = history_service.get_program_counts()
-                self._send_json({"program_counts": counts}, status_code=200)
-            else:
-                # Standard-History
-                history = history_service.get_history(event_type, limit_int, before_timestamp)
-                self._send_json({"history": history}, status_code=200)
-        except ValueError as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Ungültiger Parameter")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(400, f"Ungültiger Parameter: {str(e)}")
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Laden der History")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, "Fehler beim Laden der History")
-
-    def _handle_api_stats(self) -> None:
-        """Gibt die API-Call-Statistiken zurück."""
-        try:
-            stats_path = Path(__file__).parent.parent / "api_stats.json"
-            monitor = get_monitor(stats_path)
-            stats = monitor.get_stats()
-            self._send_json(stats, status_code=200)
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Laden der API-Statistiken")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, "Fehler beim Laden der API-Statistiken")
-
-    def _handle_cert_download(self) -> None:
-        """Stellt das SSL-Zertifikat zum Download bereit."""
-        cert_path = Path(__file__).parent.parent / "certs" / "server.crt"
-        
-        if not cert_path.exists():
-            if error_handler:
-                response = error_handler.create_error_response(
-                    ErrorCode.NOT_FOUND,
-                    "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.",
-                    ErrorCode.FILE_ERROR,
-                )
-                self._send_error_response(ErrorCode.NOT_FOUND, response)
-            else:
-                self._send_error(404, "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.")
-            return
-        
-        try:
-            cert_data = cert_path.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/x-x509-ca-cert")
-            self.send_header("Content-Disposition", 'attachment; filename="HomeConnectCoffee.crt"')
-            self.send_header("Content-Length", str(len(cert_data)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(cert_data)
-            # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Lesen des Zertifikats")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, f"Fehler beim Lesen des Zertifikats: {str(e)}")
-
-    def _handle_events_stream(self) -> None:
-        """Handhabt Server-Sent Events Stream für Live-Updates.
-        
-        Erstellt KEINEN Client, um Blockierungen zu vermeiden.
-        Der Event-Stream-Worker liefert die Events im Hintergrund.
-        """
-        global event_stream_manager
-        
-        if event_stream_manager is None:
-            if error_handler:
-                response = error_handler.create_error_response(
-                    ErrorCode.INTERNAL_SERVER_ERROR,
-                    "Event-Stream-Manager nicht initialisiert",
-                    ErrorCode.INTERNAL_SERVER_ERROR,
-                )
-                self._send_error_response(ErrorCode.INTERNAL_SERVER_ERROR, response)
-            else:
-                self._send_error(500, "Event-Stream-Manager nicht initialisiert")
-            return
-        
-        # SSE-Header senden
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-
-        # Client zum Manager hinzufügen
-        event_stream_manager.add_client(self)
-
-        try:
-            # Sende initiales Event
-            self._send_sse_event("connected", {"message": "Verbunden"})
-
-            # Halte Verbindung offen und sende Keep-Alive
-            while True:
-                time.sleep(30)
-                self._send_sse_event("ping", {"timestamp": datetime.now().isoformat()})
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen
-            pass
-        finally:
-            # Client aus Manager entfernen
-            event_stream_manager.remove_client(self)
-
-    def _send_sse_event(self, event_type: str, data: dict) -> None:
-        """Sendet ein SSE-Event."""
-        try:
-            event_str = f"event: {event_type}\n"
-            event_str += f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-            self.wfile.write(event_str.encode("utf-8"))
-            self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen
-            raise
-
-    def _handle_brew(self, client: HomeConnectClient, fill_ml: int) -> None:
-        """Startet einen Espresso."""
-        try:
-            coffee_service = CoffeeService(client)
-            result = coffee_service.brew_espresso(fill_ml)
-            self._send_json(result, status_code=200)
-        except Exception as e:
-            if error_handler:
-                code, response = error_handler.handle_error(e, default_message="Fehler beim Starten des Programms")
-                self._send_error_response(code, response)
-            else:
-                self._send_error(500, f"Fehler beim Starten des Programms: {str(e)}")
-
-    def _send_json(self, data: dict, status_code: int = 200) -> None:
-        """Sendet eine JSON-Response."""
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        response_body = json.dumps(data, indent=2).encode("utf-8")
-        self.wfile.write(response_body)
-        # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
-
-    def _send_error(self, code: int, message: str) -> None:
-        """Sendet eine Fehler-Response (Legacy-Methode, für Rückwärtskompatibilität)."""
-        response = {"error": message, "code": code}
-        self._send_error_response(code, response)
-    
-    def _send_error_response(self, code: int, response: dict) -> None:
-        """Sendet eine Fehler-Response im konsistenten Format."""
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        error_body = json.dumps(response, indent=2).encode("utf-8")
-        self.wfile.write(error_body)
-        # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
-
-    def log_message(self, format, *args):
-        """Unterdrückt Standard-Logging."""
-        pass
 
 
 
@@ -547,18 +70,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    CoffeeHandler.enable_logging = not args.no_log
-
     # Error-Handler initialisieren
     log_sensitive = os.getenv("LOG_SENSITIVE", "false").lower() == "true"
     error_handler = ErrorHandler(
-        enable_logging=CoffeeHandler.enable_logging,
+        enable_logging=not args.no_log,
         log_sensitive=log_sensitive,
     )
 
     # API-Token aus Argument oder Umgebungsvariable
     api_token = args.api_token or os.getenv("COFFEE_API_TOKEN")
-    CoffeeHandler.api_token = api_token
 
     # History-Manager initialisieren
     history_path = Path(__file__).parent.parent / "history.json"
@@ -567,17 +87,32 @@ def main() -> None:
     # Event-Stream-Manager initialisieren
     event_stream_manager = EventStreamManager(
         history_manager=history_manager,
-        enable_logging=CoffeeHandler.enable_logging,
+        enable_logging=not args.no_log,
     )
+
+    # Setze globale Variablen für Handler (für statische Methoden)
+    from homeconnect_coffee.handlers.dashboard_handler import event_stream_manager as dashboard_event_manager
+    from homeconnect_coffee.handlers.history_handler import history_manager as history_handler_manager
+    
+    # Setze globale Variablen in den Handler-Modulen
+    import homeconnect_coffee.handlers.dashboard_handler as dashboard_module
+    import homeconnect_coffee.handlers.history_handler as history_module
+    dashboard_module.event_stream_manager = event_stream_manager
+    history_module.history_manager = history_manager
 
     # API-Call-Monitor initialisieren
     stats_path = Path(__file__).parent.parent / "api_stats.json"
     monitor = get_monitor(stats_path)
     monitor.print_stats()  # Zeige aktuelle Statistiken beim Start
 
+    # Router konfigurieren
+    RequestRouter.enable_logging = not args.no_log
+    RequestRouter.api_token = api_token
+    RequestRouter.error_handler = error_handler
+
     # ThreadingHTTPServer verwenden, damit mehrere Requests gleichzeitig verarbeitet werden können
     from http.server import ThreadingHTTPServer
-    server = ThreadingHTTPServer((args.host, args.port), CoffeeHandler)
+    server = ThreadingHTTPServer((args.host, args.port), RequestRouter)
 
     # HTTPS aktivieren, falls Zertifikat und Key angegeben
     protocol = "http"
@@ -603,11 +138,11 @@ def main() -> None:
     print(f"   - GET  /api/stats   - API-Call-Statistiken (öffentlich)")
     print(f"   - GET  /events      - Live Events-Stream (SSE)")
     print(f"   - POST /brew        - Startet einen Espresso (JSON: {{\"fill_ml\": 50}})")
-    if CoffeeHandler.enable_logging:
+    if RequestRouter.enable_logging:
         print(f"   - Logging: aktiviert")
     else:
         print(f"   - Logging: deaktiviert")
-    if CoffeeHandler.api_token:
+    if RequestRouter.api_token:
         print(f"   - Authentifizierung: aktiviert")
         print(f"   - Token verwenden: Header 'Authorization: Bearer TOKEN' oder ?token=TOKEN")
     else:
