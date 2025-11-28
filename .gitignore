@@ -5,4 +5,7 @@ __pycache__/
 .DS_Store
 certs/
 history.json
+history.json.backup
+history.db
+history.db-*
 

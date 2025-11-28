@@ -1,54 +1,121 @@
 from __future__ import annotations
 
 import json
-import tempfile
-from datetime import datetime, timezone
+import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
 
 class HistoryManager:
-    """Verwaltet Verlaufsdaten für das Dashboard."""
+    """Verwaltet Verlaufsdaten für das Dashboard mit SQLite."""
 
     def __init__(self, history_path: Path) -> None:
-        self.history_path = history_path
+        """Initialisiert den HistoryManager mit SQLite-Datenbank.
+        
+        Falls history.json existiert, wird automatisch migriert.
+        """
+        # Konvertiere .json Pfad zu .db Pfad
+        if history_path.suffix == ".json":
+            self.db_path = history_path.with_suffix(".db")
+            self.json_path = history_path
+        else:
+            self.db_path = history_path
+            self.json_path = history_path.with_suffix(".json")
+        
         self._lock = Lock()  # Lock für Thread-sichere Zugriffe
-        self._ensure_history_file()
+        self._ensure_database()
+        
+        # Automatische Migration von JSON zu SQLite
+        self._migrate_from_json_if_needed()
 
-    def _ensure_history_file(self) -> None:
-        """Stellt sicher, dass die History-Datei existiert."""
-        if not self.history_path.exists():
-            self.history_path.parent.mkdir(parents=True, exist_ok=True)
-            self._write_history([])
-        # Datei existiert bereits - nicht überschreiben!
-
-    def _read_history(self) -> List[Dict[str, Any]]:
-        """Liest die History-Datei."""
+    def _ensure_database(self) -> None:
+        """Stellt sicher, dass die SQLite-Datenbank existiert und das Schema erstellt ist."""
         with self._lock:
+            if not self.db_path.exists():
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+                
+            conn = sqlite3.connect(str(self.db_path))
             try:
-                if not self.history_path.exists():
-                    return []
-                with open(self.history_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
-                return []
+                cursor = conn.cursor()
+                # Erstelle Events-Tabelle
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        data TEXT NOT NULL
+                    )
+                """)
+                # Erstelle Indizes für bessere Performance
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_type ON events(type)
+                """)
+                conn.commit()
+            finally:
+                conn.close()
 
-    def _write_history(self, history: List[Dict[str, Any]]) -> None:
-        """Schreibt die History-Datei atomar (um Datenverlust zu vermeiden)."""
+    def _migrate_from_json_if_needed(self) -> None:
+        """Migriert Events von history.json zu history.db, falls JSON existiert und DB leer ist."""
+        if not self.json_path.exists():
+            return  # Keine JSON-Datei vorhanden
+        
         with self._lock:
-            # Atomares Schreiben: Zuerst in temporäre Datei, dann umbenennen
-            temp_path = self.history_path.with_suffix(".tmp")
+            conn = sqlite3.connect(str(self.db_path))
             try:
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    json.dump(history, f, indent=2, ensure_ascii=False)
-                # Atomar umbenennen (auf den meisten Systemen)
-                temp_path.replace(self.history_path)
-            except Exception as e:
-                # Bei Fehler temporäre Datei löschen
-                if temp_path.exists():
-                    temp_path.unlink()
-                raise RuntimeError(f"Fehler beim Schreiben der History: {e}") from e
+                cursor = conn.cursor()
+                # Prüfe ob DB bereits Events enthält
+                cursor.execute("SELECT COUNT(*) FROM events")
+                count = cursor.fetchone()[0]
+                
+                if count > 0:
+                    # DB enthält bereits Events, keine Migration nötig
+                    return
+                
+                # Lade Events aus JSON
+                try:
+                    with open(self.json_path, "r", encoding="utf-8") as f:
+                        json_events = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    return  # JSON ist beschädigt oder nicht lesbar
+                
+                if not json_events:
+                    return  # JSON ist leer
+                
+                # Importiere Events in SQLite
+                imported = 0
+                for event in json_events:
+                    try:
+                        timestamp = event.get("timestamp", "")
+                        event_type = event.get("type", "")
+                        data_json = json.dumps(event.get("data", {}), ensure_ascii=False)
+                        
+                        cursor.execute(
+                            "INSERT INTO events (timestamp, type, data) VALUES (?, ?, ?)",
+                            (timestamp, event_type, data_json)
+                        )
+                        imported += 1
+                    except Exception as e:
+                        print(f"WARNUNG: Fehler beim Importieren eines Events: {e}")
+                        continue
+                
+                conn.commit()
+                
+                if imported > 0:
+                    # Benenne JSON-Datei zu Backup um
+                    backup_path = self.json_path.with_suffix(".json.backup")
+                    try:
+                        self.json_path.rename(backup_path)
+                        print(f"✓ {imported} Events von {self.json_path.name} nach {self.db_path.name} migriert")
+                        print(f"  Original-JSON gesichert als {backup_path.name}")
+                    except Exception as e:
+                        print(f"WARNUNG: Konnte JSON nicht zu Backup umbenennen: {e}")
+            finally:
+                conn.close()
 
     def add_event(
         self,
@@ -60,45 +127,73 @@ class HistoryManager:
         try:
             if timestamp is None:
                 timestamp = datetime.now(timezone.utc)
-
-            event = {
-                "timestamp": timestamp.isoformat(),
-                "type": event_type,
-                "data": data,
-            }
-
-            history = self._read_history()
-            history.append(event)
-
-            # Begrenze auf letzte 1000 Events (optional, kann angepasst werden)
-            if len(history) > 1000:
-                history = history[-1000:]
-
-            self._write_history(history)
+            
+            timestamp_str = timestamp.isoformat()
+            data_json = json.dumps(data, ensure_ascii=False)
+            
+            with self._lock:
+                conn = sqlite3.connect(str(self.db_path))
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO events (timestamp, type, data) VALUES (?, ?, ?)",
+                        (timestamp_str, event_type, data_json)
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
         except Exception as e:
             # Fehler beim Speichern nicht weiterwerfen, aber loggen
             print(f"WARNUNG: Fehler beim Speichern von Event in History: {e}")
-            # Versuche zumindest die Datei zu retten, falls sie beschädigt ist
-            try:
-                if not self.history_path.exists() or self.history_path.stat().st_size == 0:
-                    # Datei existiert nicht oder ist leer - erstelle neue
-                    self._write_history([])
-            except Exception:
-                pass
 
     def get_history(
         self, event_type: Optional[str] = None, limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """Gibt die History zurück, optional gefiltert nach Event-Typ."""
-        history = self._read_history()
-
-        if event_type:
-            history = [e for e in history if e.get("type") == event_type]
-
-        if limit:
-            history = history[-limit:]
-
-        return history
+        """Gibt die History zurück, optional gefiltert nach Event-Typ.
+        
+        Wenn limit gesetzt ist, werden die letzten N Events zurückgegeben.
+        """
+        with self._lock:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                
+                query = "SELECT timestamp, type, data FROM events"
+                params = []
+                
+                if event_type:
+                    query += " WHERE type = ?"
+                    params.append(event_type)
+                
+                # Sortiere nach Timestamp DESC für neueste zuerst, dann nehmen wir die letzten N
+                if limit:
+                    query += " ORDER BY timestamp DESC LIMIT ?"
+                    params.append(limit)
+                    cursor.execute(query, params)
+                    rows = cursor.fetchall()
+                    # Reihenfolge umkehren für chronologische Reihenfolge (älteste zuerst)
+                    rows = list(reversed(rows))
+                else:
+                    query += " ORDER BY timestamp ASC"
+                    cursor.execute(query, params)
+                    rows = cursor.fetchall()
+                
+                events = []
+                for row in rows:
+                    timestamp, event_type, data_json = row
+                    try:
+                        data = json.loads(data_json)
+                        events.append({
+                            "timestamp": timestamp,
+                            "type": event_type,
+                            "data": data,
+                        })
+                    except json.JSONDecodeError:
+                        continue
+                
+                return events
+            finally:
+                conn.close()
 
     def get_program_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Gibt die Programm-Historie zurück."""
@@ -110,41 +205,85 @@ class HistoryManager:
 
     def get_daily_usage(self, days: int = 7) -> Dict[str, int]:
         """Gibt die tägliche Nutzung der letzten N Tage zurück."""
-        from datetime import timedelta
-        
-        history = self._read_history()
-        program_events = [e for e in history if e.get("type") == "program_started"]
-
-        daily_counts: Dict[str, int] = {}
-
-        # Berechne Cutoff-Datum korrekt mit timedelta
-        cutoff_date = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=days)
-
-        for event in program_events:
+        with self._lock:
+            conn = sqlite3.connect(str(self.db_path))
             try:
-                event_time = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
-                if event_time < cutoff_date:
-                    continue
-
-                date_key = event_time.strftime("%Y-%m-%d")
-                daily_counts[date_key] = daily_counts.get(date_key, 0) + 1
-            except (KeyError, ValueError):
-                continue
-
-        return daily_counts
+                cursor = conn.cursor()
+                
+                # Berechne Cutoff-Datum
+                cutoff_date = datetime.now(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ) - timedelta(days=days)
+                cutoff_str = cutoff_date.isoformat()
+                
+                # Query für program_started Events mit Datum-Filterung
+                query = """
+                    SELECT timestamp, data
+                    FROM events
+                    WHERE type = 'program_started'
+                    AND timestamp >= ?
+                    ORDER BY timestamp ASC
+                """
+                cursor.execute(query, (cutoff_str,))
+                rows = cursor.fetchall()
+                
+                daily_counts: Dict[str, int] = {}
+                
+                # Erstelle Liste der letzten 'days' Tage
+                today = datetime.now(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                date_keys_in_range = [
+                    (today - timedelta(days=i)).strftime("%Y-%m-%d")
+                    for i in range(days - 1, -1, -1)
+                ]
+                
+                for row in rows:
+                    timestamp_str, data_json = row
+                    try:
+                        event_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                        date_key = event_time.strftime("%Y-%m-%d")
+                        
+                        if date_key in date_keys_in_range:
+                            daily_counts[date_key] = daily_counts.get(date_key, 0) + 1
+                    except (KeyError, ValueError):
+                        continue
+                
+                # Fülle fehlende Tage mit 0 auf
+                full_daily_counts = {
+                    date_key: daily_counts.get(date_key, 0) for date_key in date_keys_in_range
+                }
+                
+                return full_daily_counts
+            finally:
+                conn.close()
 
     def get_program_counts(self) -> Dict[str, int]:
         """Gibt die Anzahl der Nutzung pro Programm zurück."""
-        history = self._read_history()
-        program_events = [e for e in history if e.get("type") == "program_started"]
-
-        counts: Dict[str, int] = {}
-
-        for event in program_events:
-            program_key = event.get("data", {}).get("program", "Unknown")
-            counts[program_key] = counts.get(program_key, 0) + 1
-
-        return counts
-
+        with self._lock:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                
+                query = """
+                    SELECT data
+                    FROM events
+                    WHERE type = 'program_started'
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                
+                counts: Dict[str, int] = {}
+                
+                for row in rows:
+                    data_json, = row
+                    try:
+                        data = json.loads(data_json)
+                        program_key = data.get("program", "Unknown")
+                        counts[program_key] = counts.get(program_key, 0) + 1
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+                
+                return counts
+            finally:
+                conn.close()
