@@ -17,7 +17,7 @@ FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history
+.PHONY: init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history test test-unit test-cov
 
 init: init_venv install_deps
 
@@ -94,4 +94,16 @@ migrate_history: init
 export_history: init
 	@echo "Exportiere Events von history.db zu history.json..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/export_to_json.py
+
+test: init
+	@echo "Führe Tests aus..."
+	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest
+
+test-unit: init
+	@echo "Führe Unit-Tests aus..."
+	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest -m unit
+
+test-cov: init
+	@echo "Führe Tests mit Coverage-Report aus..."
+	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest --cov=src/homeconnect_coffee --cov-report=term-missing --cov-report=html
 

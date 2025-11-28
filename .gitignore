@@ -9,4 +9,11 @@ history.json.backup
 history.db
 history.db-*
 api_stats.json
+# Test-Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+*.cover
+.hypothesis/
 
