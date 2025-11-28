@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import ssl
 import threading
@@ -25,6 +26,7 @@ import requests
 from homeconnect_coffee.api_monitor import get_monitor
 from homeconnect_coffee.client import HomeConnectClient
 from homeconnect_coffee.config import load_config
+from homeconnect_coffee.errors import ErrorCode, ErrorHandler
 from homeconnect_coffee.history import HistoryManager
 from homeconnect_coffee.services import (
     CoffeeService,
@@ -37,6 +39,10 @@ from homeconnect_coffee.services import (
 # Globale Variablen (werden in main() initialisiert)
 history_manager: HistoryManager | None = None
 event_stream_manager: EventStreamManager | None = None
+error_handler: ErrorHandler | None = None
+
+# Logger für Server
+logger = logging.getLogger(__name__)
 
 
 class CoffeeHandler(BaseHTTPRequestHandler):
@@ -54,11 +60,10 @@ class CoffeeHandler(BaseHTTPRequestHandler):
     def log_request(self, code="-", size="-"):
         """Loggt Requests wenn Logging aktiviert ist."""
         if self.enable_logging:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             client_ip = self.client_address[0]
             method = self.command
             path = self._mask_token_in_path(self.path)
-            print(f"[{timestamp}] {client_ip} - {method} {path} - {code}")
+            logger.info(f"{client_ip} - {method} {path} - {code}")
 
     def _mask_token_in_path(self, path: str) -> str:
         """Maskiert Token-Parameter im Pfad für das Logging."""
@@ -135,7 +140,15 @@ class CoffeeHandler(BaseHTTPRequestHandler):
 
             # Prüfe Authentifizierung für alle anderen Endpoints
             if not self._check_auth():
-                self._send_error(401, "Unauthorized - Invalid or missing API token")
+                if error_handler:
+                    response = error_handler.create_error_response(
+                        ErrorCode.UNAUTHORIZED,
+                        "Unauthorized - Invalid or missing API token",
+                        ErrorCode.UNAUTHORIZED,
+                    )
+                    self._send_error_response(ErrorCode.UNAUTHORIZED, response)
+                else:
+                    self._send_error(401, "Unauthorized - Invalid or missing API token")
                 return
 
             # Config und Client-Erstellung
@@ -162,12 +175,22 @@ class CoffeeHandler(BaseHTTPRequestHandler):
                 fill_ml = int(fill_ml_param) if fill_ml_param and fill_ml_param.isdigit() else 50
                 self._handle_brew(client, fill_ml)
             else:
-                self._send_error(404, "Not Found")
+                if error_handler:
+                    response = error_handler.create_error_response(
+                        ErrorCode.NOT_FOUND,
+                        "Not Found",
+                        ErrorCode.NOT_FOUND,
+                    )
+                    self._send_error_response(ErrorCode.NOT_FOUND, response)
+                else:
+                    self._send_error(404, "Not Found")
 
         except Exception as e:
-            if CoffeeHandler.enable_logging:
-                print(f"Fehler in do_GET: {e}")
-            self._send_error(500, str(e))
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Verarbeiten der Anfrage")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, str(e))
 
     def do_POST(self):
         """Behandelt POST-Requests für Brew."""
@@ -176,7 +199,15 @@ class CoffeeHandler(BaseHTTPRequestHandler):
 
         # Prüfe Authentifizierung
         if not self._check_auth():
-            self._send_error(401, "Unauthorized - Invalid or missing API token")
+            if error_handler:
+                response = error_handler.create_error_response(
+                    ErrorCode.UNAUTHORIZED,
+                    "Unauthorized - Invalid or missing API token",
+                    ErrorCode.UNAUTHORIZED,
+                )
+                self._send_error_response(ErrorCode.UNAUTHORIZED, response)
+            else:
+                self._send_error(401, "Unauthorized - Invalid or missing API token")
             return
 
         try:
@@ -185,9 +216,11 @@ class CoffeeHandler(BaseHTTPRequestHandler):
                 config = load_config()
                 client = HomeConnectClient(config)
             except Exception as e:
-                if CoffeeHandler.enable_logging:
-                    print(f"Fehler beim Laden der Config/Client: {e}")
-                self._send_error(500, f"Fehler beim Initialisieren: {str(e)}")
+                if error_handler:
+                    code, response = error_handler.handle_error(e, default_message="Fehler beim Initialisieren")
+                    self._send_error_response(code, response)
+                else:
+                    self._send_error(500, f"Fehler beim Initialisieren: {str(e)}")
                 return
 
             if path == "/brew":
@@ -197,12 +230,22 @@ class CoffeeHandler(BaseHTTPRequestHandler):
                 fill_ml = data.get("fill_ml", 50)
                 self._handle_brew(client, fill_ml)
             else:
-                self._send_error(404, "Not Found")
+                if error_handler:
+                    response = error_handler.create_error_response(
+                        ErrorCode.NOT_FOUND,
+                        "Not Found",
+                        ErrorCode.NOT_FOUND,
+                    )
+                    self._send_error_response(ErrorCode.NOT_FOUND, response)
+                else:
+                    self._send_error(404, "Not Found")
 
         except Exception as e:
-            if CoffeeHandler.enable_logging:
-                print(f"Fehler in do_POST: {e}")
-            self._send_error(500, str(e))
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Verarbeiten der Anfrage")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, str(e))
 
     def _handle_wake(self, client: HomeConnectClient) -> None:
         """Aktiviert das Gerät aus dem Standby."""
@@ -210,10 +253,15 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             coffee_service = CoffeeService(client)
             result = coffee_service.wake_device()
             self._send_json(result, status_code=200)
-        except requests.exceptions.Timeout:
-            self._send_error(504, "API-Anfrage hat das Timeout überschritten")
         except Exception as e:
-            self._send_error(500, f"Fehler beim Aktivieren: {str(e)}")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Aktivieren")
+                self._send_error_response(code, response)
+            else:
+                if isinstance(e, requests.exceptions.Timeout):
+                    self._send_error(504, "API-Anfrage hat das Timeout überschritten")
+                else:
+                    self._send_error(500, f"Fehler beim Aktivieren: {str(e)}")
 
     def _handle_status(self, client: HomeConnectClient) -> None:
         """Gibt den Gerätestatus zurück."""
@@ -228,14 +276,26 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             extended_status = status_service.get_extended_status()
             self._send_json(extended_status, status_code=200)
         except Exception as e:
-            self._send_error(500, str(e))
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Abrufen des Status")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, str(e))
 
     def _handle_dashboard(self) -> None:
         """Liefert die Dashboard-HTML-Seite."""
         dashboard_path = Path(__file__).parent / "dashboard.html"
         
         if not dashboard_path.exists():
-            self._send_error(404, "Dashboard nicht gefunden")
+            if error_handler:
+                response = error_handler.create_error_response(
+                    ErrorCode.NOT_FOUND,
+                    "Dashboard nicht gefunden",
+                    ErrorCode.FILE_ERROR,
+                )
+                self._send_error_response(ErrorCode.NOT_FOUND, response)
+            else:
+                self._send_error(404, "Dashboard nicht gefunden")
             return
         
         try:
@@ -246,12 +306,24 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(dashboard_html.encode("utf-8"))
         except Exception as e:
-            self._send_error(500, f"Fehler beim Lesen des Dashboards: {str(e)}")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Lesen des Dashboards")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, f"Fehler beim Lesen des Dashboards: {str(e)}")
 
     def _handle_history(self) -> None:
         """Gibt die Verlaufsdaten zurück."""
         if history_manager is None:
-            self._send_error(500, "History-Manager nicht initialisiert")
+            if error_handler:
+                response = error_handler.create_error_response(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "History-Manager nicht initialisiert",
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                )
+                self._send_error_response(ErrorCode.INTERNAL_SERVER_ERROR, response)
+            else:
+                self._send_error(500, "History-Manager nicht initialisiert")
             return
         
         try:
@@ -283,11 +355,17 @@ class CoffeeHandler(BaseHTTPRequestHandler):
                 history = history_service.get_history(event_type, limit_int, before_timestamp)
                 self._send_json({"history": history}, status_code=200)
         except ValueError as e:
-            self._send_error(400, f"Ungültiger Parameter: {str(e)}")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Ungültiger Parameter")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(400, f"Ungültiger Parameter: {str(e)}")
         except Exception as e:
-            if CoffeeHandler.enable_logging:
-                print(f"Fehler beim Laden der History: {e}")
-            self._send_error(500, "Fehler beim Laden der History")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Laden der History")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, "Fehler beim Laden der History")
 
     def _handle_api_stats(self) -> None:
         """Gibt die API-Call-Statistiken zurück."""
@@ -297,16 +375,26 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             stats = monitor.get_stats()
             self._send_json(stats, status_code=200)
         except Exception as e:
-            if CoffeeHandler.enable_logging:
-                print(f"Fehler beim Laden der API-Statistiken: {e}")
-            self._send_error(500, "Fehler beim Laden der API-Statistiken")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Laden der API-Statistiken")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, "Fehler beim Laden der API-Statistiken")
 
     def _handle_cert_download(self) -> None:
         """Stellt das SSL-Zertifikat zum Download bereit."""
         cert_path = Path(__file__).parent.parent / "certs" / "server.crt"
         
         if not cert_path.exists():
-            self._send_error(404, "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.")
+            if error_handler:
+                response = error_handler.create_error_response(
+                    ErrorCode.NOT_FOUND,
+                    "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.",
+                    ErrorCode.FILE_ERROR,
+                )
+                self._send_error_response(ErrorCode.NOT_FOUND, response)
+            else:
+                self._send_error(404, "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.")
             return
         
         try:
@@ -320,7 +408,11 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             self.wfile.write(cert_data)
             # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
         except Exception as e:
-            self._send_error(500, f"Fehler beim Lesen des Zertifikats: {str(e)}")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Lesen des Zertifikats")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, f"Fehler beim Lesen des Zertifikats: {str(e)}")
 
     def _handle_events_stream(self) -> None:
         """Handhabt Server-Sent Events Stream für Live-Updates.
@@ -331,7 +423,15 @@ class CoffeeHandler(BaseHTTPRequestHandler):
         global event_stream_manager
         
         if event_stream_manager is None:
-            self._send_error(500, "Event-Stream-Manager nicht initialisiert")
+            if error_handler:
+                response = error_handler.create_error_response(
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                    "Event-Stream-Manager nicht initialisiert",
+                    ErrorCode.INTERNAL_SERVER_ERROR,
+                )
+                self._send_error_response(ErrorCode.INTERNAL_SERVER_ERROR, response)
+            else:
+                self._send_error(500, "Event-Stream-Manager nicht initialisiert")
             return
         
         # SSE-Header senden
@@ -378,9 +478,11 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             result = coffee_service.brew_espresso(fill_ml)
             self._send_json(result, status_code=200)
         except Exception as e:
-            if CoffeeHandler.enable_logging:
-                print(f"Fehler beim Starten des Programms: {e}")
-            self._send_error(500, f"Fehler beim Starten des Programms: {str(e)}")
+            if error_handler:
+                code, response = error_handler.handle_error(e, default_message="Fehler beim Starten des Programms")
+                self._send_error_response(code, response)
+            else:
+                self._send_error(500, f"Fehler beim Starten des Programms: {str(e)}")
 
     def _send_json(self, data: dict, status_code: int = 200) -> None:
         """Sendet eine JSON-Response."""
@@ -393,12 +495,17 @@ class CoffeeHandler(BaseHTTPRequestHandler):
         # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
 
     def _send_error(self, code: int, message: str) -> None:
-        """Sendet eine Fehler-Response."""
+        """Sendet eine Fehler-Response (Legacy-Methode, für Rückwärtskompatibilität)."""
+        response = {"error": message, "code": code}
+        self._send_error_response(code, response)
+    
+    def _send_error_response(self, code: int, response: dict) -> None:
+        """Sendet eine Fehler-Response im konsistenten Format."""
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        error_body = json.dumps({"error": message}).encode("utf-8")
+        error_body = json.dumps(response, indent=2).encode("utf-8")
         self.wfile.write(error_body)
         # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
 
@@ -410,7 +517,7 @@ class CoffeeHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    global history_manager, event_stream_manager
+    global history_manager, event_stream_manager, error_handler
 
     parser = argparse.ArgumentParser(description="HTTP-Server für Siri Shortcuts Integration")
     parser.add_argument("--port", type=int, default=8080, help="Port für den HTTP-Server (Standard: 8080)")
@@ -441,6 +548,13 @@ def main() -> None:
     args = parser.parse_args()
 
     CoffeeHandler.enable_logging = not args.no_log
+
+    # Error-Handler initialisieren
+    log_sensitive = os.getenv("LOG_SENSITIVE", "false").lower() == "true"
+    error_handler = ErrorHandler(
+        enable_logging=CoffeeHandler.enable_logging,
+        log_sensitive=log_sensitive,
+    )
 
     # API-Token aus Argument oder Umgebungsvariable
     api_token = args.api_token or os.getenv("COFFEE_API_TOKEN")

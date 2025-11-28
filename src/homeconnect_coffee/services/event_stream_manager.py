@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -18,6 +19,9 @@ from ..config import load_config
 from ..history import HistoryManager
 
 EVENTS_URL = "https://api.home-connect.com/api/homeappliances/events"
+
+# Logger für Event-Stream-Manager
+logger = logging.getLogger(__name__)
 
 
 class EventStreamManager:
@@ -71,7 +75,7 @@ class EventStreamManager:
         self._stream_thread.start()
         
         if self.enable_logging:
-            print("Events-Stream Worker gestartet (für History-Persistierung)...")
+            logger.info("Events-Stream Worker gestartet (für History-Persistierung)...")
 
     def stop(self) -> None:
         """Stoppt den Event-Stream-Worker."""
@@ -82,7 +86,7 @@ class EventStreamManager:
         self._stream_running = False
         
         if self.enable_logging:
-            print("Events-Stream Worker wird gestoppt...")
+            logger.info("Events-Stream Worker wird gestoppt...")
 
     def add_client(self, client: BaseHTTPRequestHandler) -> None:
         """Fügt einen SSE-Client hinzu.
@@ -140,7 +144,7 @@ class EventStreamManager:
                         self.history_manager.add_event(event_type, data)
                     except Exception as e:
                         if self.enable_logging:
-                            print(f"Fehler beim Speichern von Event in History: {e}")
+                            logger.error(f"Fehler beim Speichern von Event in History: {e}")
                 
                 self._history_queue.task_done()
             except Exception:
@@ -167,7 +171,7 @@ class EventStreamManager:
                     token = client.get_access_token()
                 except Exception as e:
                     if self.enable_logging:
-                        print(f"Events-Stream Worker: Fehler beim Laden der Config: {e}")
+                        logger.error(f"Events-Stream Worker: Fehler beim Laden der Config: {e}")
                     time.sleep(10)  # Warte vor erneutem Versuch
                     continue
                     
@@ -177,7 +181,7 @@ class EventStreamManager:
                 }
 
                 if self.enable_logging:
-                    print("Events-Stream Worker: Verbinde mit HomeConnect Events...")
+                    logger.info("Events-Stream Worker: Verbinde mit HomeConnect Events...")
 
                 # SSEClient benötigt eine requests.Response, nicht direkt eine URL
                 try:
@@ -192,7 +196,7 @@ class EventStreamManager:
                     # Erfolgreiche Verbindung - Backoff zurücksetzen
                     if consecutive_429_errors > 0:
                         if self.enable_logging:
-                            print(f"Events-Stream Worker: Verbindung erfolgreich, Backoff zurückgesetzt")
+                            logger.info("Events-Stream Worker: Verbindung erfolgreich, Backoff zurückgesetzt")
                         consecutive_429_errors = 0
                         backoff_seconds = 60
                         
@@ -201,7 +205,7 @@ class EventStreamManager:
                     if e.response is not None and e.response.status_code == 429:
                         consecutive_429_errors += 1
                         if self.enable_logging:
-                            print(f"Events-Stream Worker: Rate-Limit erreicht (429). Warte {backoff_seconds}s vor erneutem Versuch...")
+                            logger.warning(f"Events-Stream Worker: Rate-Limit erreicht (429). Warte {backoff_seconds}s vor erneutem Versuch...")
                         
                         time.sleep(backoff_seconds)
                         
@@ -211,18 +215,18 @@ class EventStreamManager:
                     else:
                         # Andere HTTP-Fehler
                         if self.enable_logging:
-                            print(f"Events-Stream Worker: HTTP-Fehler: {e}")
+                            logger.error(f"Events-Stream Worker: HTTP-Fehler: {e}")
                         time.sleep(10)
                         continue
                 except requests.exceptions.RequestException as e:
                     # Andere Verbindungsfehler (Timeout, ConnectionError, etc.)
                     if self.enable_logging:
-                        print(f"Events-Stream Worker: Verbindungsfehler: {e}")
+                        logger.warning(f"Events-Stream Worker: Verbindungsfehler: {e}")
                     time.sleep(10)  # Normale Pause bei Verbindungsfehlern
                     continue
 
                 if self.enable_logging:
-                    print("Events-Stream Worker: Verbunden, warte auf Events...")
+                    logger.info("Events-Stream Worker: Verbunden, warte auf Events...")
 
                 sse_client = SSEClient(response)
                 for event in sse_client.events():
@@ -271,7 +275,7 @@ class EventStreamManager:
                             except Exception as e:
                                 # Fehler beim Hinzufügen zur Queue sollten den Stream nicht stoppen
                                 if self.enable_logging:
-                                    print(f"Fehler beim Hinzufügen von Event zur Queue: {e}")
+                                    logger.warning(f"Fehler beim Hinzufügen von Event zur Queue: {e}")
 
                         # Event an alle verbundenen Clients senden
                         self.broadcast_event(event_type, payload)
@@ -281,16 +285,16 @@ class EventStreamManager:
                         pass
                     except Exception as e:
                         if self.enable_logging:
-                            print(f"Fehler beim Verarbeiten von Event: {e}")
+                            logger.error(f"Fehler beim Verarbeiten von Event: {e}")
 
             except KeyboardInterrupt:
                 break
             except Exception as e:
                 if self.enable_logging:
-                    print(f"Fehler im Events-Stream: {e}")
+                    logger.error(f"Fehler im Events-Stream: {e}")
                 time.sleep(5)  # Warte vor Reconnect
         
         self._stream_running = False
         if self.enable_logging:
-            print("Events-Stream Worker beendet.")
+            logger.info("Events-Stream Worker beendet.")
 
