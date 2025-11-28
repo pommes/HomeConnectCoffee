@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on tags like v1.0.0, v1.1.0, etc.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for changelog generation
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Extract version from tag
+      id: tag_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Extract changelog for version
+      id: changelog
+      run: |
+        VERSION="${{ steps.tag_version.outputs.version }}"
+        # Remove 'v' prefix if present
+        VERSION_NUMBER=${VERSION#v}
+        
+        # Extract changelog section for this version from CHANGELOG.md
+        # This looks for ## [version] pattern
+        if grep -q "## \[$VERSION_NUMBER\]" CHANGELOG.md; then
+          # Extract from ## [version] to next ## or end of file
+          awk "/^## \[$VERSION_NUMBER\]/,/^## \[/ {if (!/^## \[/ || /^## \[$VERSION_NUMBER\]/) print}" CHANGELOG.md | sed '$d' > release_notes.md
+        elif grep -q "## \[$VERSION\]" CHANGELOG.md; then
+          awk "/^## \[$VERSION\]/,/^## \[/ {if (!/^## \[/ || /^## \[$VERSION\]/) print}" CHANGELOG.md | sed '$d' > release_notes.md
+        else
+          echo "## Release $VERSION" > release_notes.md
+          echo "" >> release_notes.md
+          echo "See [CHANGELOG.md](CHANGELOG.md) for details." >> release_notes.md
+        fi
+        
+        # Show extracted notes
+        cat release_notes.md
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ steps.tag_version.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ contains(steps.tag_version.outputs.version, '-') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
