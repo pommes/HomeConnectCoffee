@@ -321,6 +321,9 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             # Begrenze Limit auf maximal 1000, um Server-Überlastung zu vermeiden
             limit_int = min(int(limit), 1000) if limit and limit.isdigit() else None
             
+            # Cursor-basierte Pagination: before_timestamp
+            before_timestamp = query_params.get("before_timestamp", [None])[0]
+            
             if query_params.get("daily_usage"):
                 # Tägliche Nutzung
                 days = min(int(query_params.get("days", ["7"])[0]), 365)  # Max 1 Jahr
@@ -332,7 +335,7 @@ class CoffeeHandler(BaseHTTPRequestHandler):
                 self._send_json({"program_counts": counts}, status_code=200)
             else:
                 # Standard-History
-                history = history_manager.get_history(event_type, limit_int)
+                history = history_manager.get_history(event_type, limit_int, before_timestamp)
                 self._send_json({"history": history}, status_code=200)
         except ValueError as e:
             self._send_error(400, f"Ungültiger Parameter: {str(e)}")

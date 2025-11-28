@@ -214,6 +214,11 @@
 
         // EventSource für Live-Updates
         let eventSource = null;
+        
+        // Lazy Loading State
+        let isLoadingMoreEvents = false;
+        let hasMoreEvents = true;
+        let oldestEventTimestamp = null;
 
         // Initialisierung
         document.addEventListener('DOMContentLoaded', () => {
@@ -221,6 +226,7 @@
             loadInitialData();
             loadEventHistory(); // Lade persistierte Events
             connectEventStream();
+            setupInfiniteScroll();
             setInterval(loadInitialData, 30000); // Alle 30 Sekunden aktualisieren
         });
 
@@ -386,45 +392,138 @@
             }
         }
 
-        async function loadEventHistory() {
+        async function loadEventHistory(beforeTimestamp = null) {
+            if (isLoadingMoreEvents) {
+                return; // Verhindere mehrfaches gleichzeitiges Laden
+            }
+            
             try {
-                // Lade die letzten 50 Events für das Event-Log
-                const historyUrl = API_TOKEN
-                    ? `${API_BASE}/api/history?limit=50&token=${encodeURIComponent(API_TOKEN)}`
-                    : `${API_BASE}/api/history?limit=50`;
+                isLoadingMoreEvents = true;
+                
+                // Lade initial 20 Events, beim Nachladen weitere 20
+                const limit = beforeTimestamp ? 20 : 20;
+                let historyUrl = API_TOKEN
+                    ? `${API_BASE}/api/history?limit=${limit}&token=${encodeURIComponent(API_TOKEN)}`
+                    : `${API_BASE}/api/history?limit=${limit}`;
+                
+                if (beforeTimestamp) {
+                    historyUrl += `&before_timestamp=${encodeURIComponent(beforeTimestamp)}`;
+                }
+                
                 const historyResponse = await fetch(historyUrl);
                 if (historyResponse.ok) {
                     const historyData = await historyResponse.json();
                     const events = historyData.history || [];
                     
-                    // Sortiere nach Timestamp (neueste zuerst)
-                    events.sort((a, b) => {
-                        const timeA = new Date(a.timestamp).getTime();
-                        const timeB = new Date(b.timestamp).getTime();
-                        return timeB - timeA; // Neueste zuerst
-                    });
-                    
-                    // Fülle Event-Log mit persistierten Events
                     const eventLog = document.getElementById('eventLog');
-                    if (eventLog.querySelector('.loading')) {
-                        eventLog.innerHTML = '';
+                    
+                    // Initial Load: Leere Event-Log
+                    if (!beforeTimestamp) {
+                        if (eventLog.querySelector('.loading')) {
+                            eventLog.innerHTML = '';
+                        }
+                        oldestEventTimestamp = null;
                     }
                     
-                    events.forEach(event => {
-                        addEventToLogFromHistory(event);
-                    });
-                    
                     if (events.length === 0) {
-                        eventLog.innerHTML = '<div class="loading">Noch keine Events gespeichert</div>';
+                        if (!beforeTimestamp) {
+                            eventLog.innerHTML = '<div class="loading">Noch keine Events gespeichert</div>';
+                        } else {
+                            // Keine weiteren Events
+                            hasMoreEvents = false;
+                            removeLoadingIndicator();
+                        }
+                    } else {
+                        // Events werden chronologisch zurückgegeben (älteste zuerst)
+                        // Für Anzeige: Neueste zuerst (oben), also umkehren beim Initial Load
+                        // Beim Nachladen: Events am Ende hinzufügen (sind bereits chronologisch sortiert)
+                        
+                        if (!beforeTimestamp) {
+                            // Initial Load: Neueste zuerst anzeigen (umkehren)
+                            const reversedEvents = [...events].reverse();
+                            reversedEvents.forEach(event => {
+                                addEventToLogFromHistory(event, true); // true = oben einfügen
+                            });
+                            
+                            // Speichere Timestamp des ältesten Events (für Nachladen)
+                            if (events.length > 0) {
+                                oldestEventTimestamp = events[0].timestamp; // Ältestes Event
+                            }
+                        } else {
+                            // Nachladen: Events am Ende hinzufügen (chronologisch älteste zuerst)
+                            events.forEach(event => {
+                                addEventToLogFromHistory(event, false); // false = am Ende hinzufügen
+                            });
+                            
+                            // Aktualisiere Timestamp des ältesten geladenen Events
+                            if (events.length > 0) {
+                                oldestEventTimestamp = events[0].timestamp;
+                            }
+                        }
+                        
+                        // Wenn weniger Events als Limit zurückgegeben wurden, gibt es keine weiteren
+                        if (events.length < limit) {
+                            hasMoreEvents = false;
+                        }
                     }
                 }
             } catch (error) {
                 console.error('Fehler beim Laden der Event-Historie:', error);
+            } finally {
+                isLoadingMoreEvents = false;
+                removeLoadingIndicator();
+            }
+        }
+        
+        function setupInfiniteScroll() {
+            const eventLog = document.getElementById('eventLog');
+            
+            eventLog.addEventListener('scroll', () => {
+                // Prüfe ob User nahe am Ende ist (100px vor Ende)
+                const scrollTop = eventLog.scrollTop;
+                const scrollHeight = eventLog.scrollHeight;
+                const clientHeight = eventLog.clientHeight;
+                
+                if (scrollTop + clientHeight >= scrollHeight - 100) {
+                    // Lade weitere Events, wenn noch welche vorhanden sind
+                    if (hasMoreEvents && !isLoadingMoreEvents && oldestEventTimestamp) {
+                        showLoadingIndicator();
+                        loadEventHistory(oldestEventTimestamp);
+                    }
+                }
+            });
+        }
+        
+        function showLoadingIndicator() {
+            const eventLog = document.getElementById('eventLog');
+            // Entferne vorhandenen Loading-Indikator
+            const existing = eventLog.querySelector('.loading-more');
+            if (existing) {
+                existing.remove();
+            }
+            
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'loading loading-more';
+            loadingDiv.textContent = 'Lade weitere Events...';
+            eventLog.appendChild(loadingDiv);
+        }
+        
+        function removeLoadingIndicator() {
+            const eventLog = document.getElementById('eventLog');
+            const loadingDiv = eventLog.querySelector('.loading-more');
+            if (loadingDiv) {
+                loadingDiv.remove();
             }
         }
 
-        function addEventToLogFromHistory(event) {
+        function addEventToLogFromHistory(event, prepend = false) {
             const eventLog = document.getElementById('eventLog');
+            
+            // Entferne Loading-Indikator falls vorhanden
+            const loadingDiv = eventLog.querySelector('.loading-more');
+            if (loadingDiv) {
+                loadingDiv.remove();
+            }
             
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
@@ -454,7 +553,11 @@
                 <div>${JSON.stringify(eventData, null, 2)}</div>
             `;
 
-            eventLog.appendChild(eventItem);
+            if (prepend) {
+                eventLog.insertBefore(eventItem, eventLog.firstChild);
+            } else {
+                eventLog.appendChild(eventItem);
+            }
         }
 
         function updateProgramChart(counts) {
@@ -558,7 +661,7 @@
             const eventLog = document.getElementById('eventLog');
             
             // Entferne Loading-Message
-            if (eventLog.querySelector('.loading')) {
+            if (eventLog.querySelector('.loading') && !eventLog.querySelector('.event-item')) {
                 eventLog.innerHTML = '';
             }
 
@@ -574,11 +677,17 @@
                 <div>${JSON.stringify(data, null, 2)}</div>
             `;
 
+            // Live-Events immer oben einfügen
             eventLog.insertBefore(eventItem, eventLog.firstChild);
 
-            // Begrenze auf 50 Events
-            while (eventLog.children.length > 50) {
-                eventLog.removeChild(eventLog.lastChild);
+            // Begrenze auf 100 Events im DOM (für Performance)
+            while (eventLog.children.length > 100) {
+                const lastChild = eventLog.lastChild;
+                if (lastChild && !lastChild.classList.contains('loading-more')) {
+                    eventLog.removeChild(lastChild);
+                } else {
+                    break; // Nicht mehr Events entfernen, wenn Loading-Indikator erreicht
+                }
             }
         }
 

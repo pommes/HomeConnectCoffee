@@ -147,11 +147,21 @@ class HistoryManager:
             print(f"WARNUNG: Fehler beim Speichern von Event in History: {e}")
 
     def get_history(
-        self, event_type: Optional[str] = None, limit: Optional[int] = None
+        self, 
+        event_type: Optional[str] = None, 
+        limit: Optional[int] = None,
+        before_timestamp: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Gibt die History zurück, optional gefiltert nach Event-Typ.
         
-        Wenn limit gesetzt ist, werden die letzten N Events zurückgegeben.
+        Args:
+            event_type: Optionaler Filter für Event-Typ
+            limit: Maximale Anzahl Events (wenn gesetzt, werden die letzten N Events zurückgegeben)
+            before_timestamp: ISO 8601 Timestamp - gibt nur Events zurück, die vor diesem Zeitpunkt liegen
+                            (für Cursor-basierte Pagination)
+        
+        Returns:
+            Liste von Events, chronologisch sortiert (älteste zuerst)
         """
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
@@ -160,13 +170,32 @@ class HistoryManager:
                 
                 query = "SELECT timestamp, type, data FROM events"
                 params = []
+                conditions = []
                 
                 if event_type:
-                    query += " WHERE type = ?"
+                    conditions.append("type = ?")
                     params.append(event_type)
                 
-                # Sortiere nach Timestamp DESC für neueste zuerst, dann nehmen wir die letzten N
-                if limit:
+                if before_timestamp:
+                    conditions.append("timestamp < ?")
+                    params.append(before_timestamp)
+                
+                if conditions:
+                    query += " WHERE " + " AND ".join(conditions)
+                
+                # Cursor-basierte Pagination: Events vor before_timestamp, absteigend sortiert
+                # Dann umkehren für chronologische Reihenfolge (älteste zuerst)
+                if before_timestamp:
+                    query += " ORDER BY timestamp DESC"
+                    if limit:
+                        query += " LIMIT ?"
+                        params.append(limit)
+                    cursor.execute(query, params)
+                    rows = cursor.fetchall()
+                    # Reihenfolge umkehren für chronologische Reihenfolge (älteste zuerst)
+                    rows = list(reversed(rows))
+                elif limit:
+                    # Ohne before_timestamp: Neueste Events zuerst, dann umkehren
                     query += " ORDER BY timestamp DESC LIMIT ?"
                     params.append(limit)
                     cursor.execute(query, params)
@@ -174,6 +203,7 @@ class HistoryManager:
                     # Reihenfolge umkehren für chronologische Reihenfolge (älteste zuerst)
                     rows = list(reversed(rows))
                 else:
+                    # Alle Events chronologisch
                     query += " ORDER BY timestamp ASC"
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
