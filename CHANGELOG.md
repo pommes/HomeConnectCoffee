@@ -80,6 +80,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed manual attribute copying between router and handlers
 - Reduced tight coupling between router and handler classes
 
+#### CI/CD and Automation
+- **Commit:** [`2cedc77`](https://github.com/pommes/HomeConnectCoffee/commit/2cedc77)
+- GitHub Actions workflow for automated testing
+- Tests run on Python 3.11, 3.12, and 3.13
+- Automatic test execution on push and pull requests
+- Code coverage reporting integration
+
+- **Commit:** [`59db82e`](https://github.com/pommes/HomeConnectCoffee/commit/59db82e)
+- Added GitHub Actions test badge to README.md
+- Improved visibility of CI/CD status
+
+- **Commit:** [`1056bf1`](https://github.com/pommes/HomeConnectCoffee/commit/1056bf1)
+- GitHub Actions workflow for automated release management
+- Automatic release creation when tags are pushed
+- Changelog extraction from CHANGELOG.md for release notes
+- Support for pre-release detection
+
+#### Documentation and Internationalization
+- **Commit:** [`238061b`](https://github.com/pommes/HomeConnectCoffee/commit/238061b)
+- Removed outdated documentation files (ARCHITECTURE_REVIEW.md, REFACTORING.md)
+- Updated ARCHITECTURE.md with recent architectural changes
+- Enhanced clarity and organization of architecture documentation
+
+- **Commit:** [`ad05098`](https://github.com/pommes/HomeConnectCoffee/commit/ad05098)
+- Complete translation of all documentation to English
+- Translated README.md, CHANGELOG.md, ARCHITECTURE.md, SECURITY.md
+- Translated all code comments and docstrings to English
+- Translated test files and configuration files
+- Improved language consistency across the project
+
+#### Project Structure and Configuration
+- **Commit:** [`6b3479b`](https://github.com/pommes/HomeConnectCoffee/commit/6b3479b)
+- Enhanced `.env.example` with detailed comments and example values
+- Updated `.gitignore` to include coverage.xml and IDE-specific files
+- Removed IDE-specific configurations (`.vscode/`)
+- Improved Makefile flexibility for certificate generation with custom hostnames
+- Cleaned up repository by removing unnecessary files
+
 ## [1.0.0] - 2025-11-28
 
 ### Added
