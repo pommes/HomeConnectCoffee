@@ -2,6 +2,10 @@
 
 [![Tests](https://github.com/pommes/HomeConnectCoffee/actions/workflows/tests.yml/badge.svg)](https://github.com/pommes/HomeConnectCoffee/actions/workflows/tests.yml)
 [![Release](https://img.shields.io/github/v/release/pommes/HomeConnectCoffee?include_prereleases&sort=semver)](https://github.com/pommes/HomeConnectCoffee/releases/latest)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/pommes/HomeConnectCoffee)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/pommes/HomeConnectCoffee?style=social)](https://github.com/pommes/HomeConnectCoffee/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/pommes/HomeConnectCoffee?style=social)](https://github.com/pommes/HomeConnectCoffee/network/members)
 
 This project demonstrates how to start your Bosch CTL7181B0 (and other HomeConnect coffee machines) via Python script using the official HomeConnect Cloud API.
 
