@@ -17,7 +17,7 @@ FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: init init_venv install_deps auth brew status events wake server clean_tokens cert cert_install cert_export
+.PHONY: init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history
 
 init: init_venv install_deps
 
@@ -43,6 +43,9 @@ wake: init
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_WAKE)
 
 server: init
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_SERVER) $(SERVER_ARGS)
+
+dashboard: init
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_SERVER) $(SERVER_ARGS)
 
 clean_tokens:
@@ -79,4 +82,8 @@ cert_export: $(CERT_FILE)
 	@open -R $(CERT_FILE)
 	@echo "Zertifikat-Datei wurde im Finder geöffnet."
 	@echo "Du kannst es jetzt per AirDrop zu deinem iOS-Gerät senden."
+
+fix_history:
+	@echo "Verarbeite vorhandene Events in der History..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/fix_history.py
 

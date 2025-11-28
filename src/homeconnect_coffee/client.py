@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any, Dict, Optional
 
 import requests
@@ -9,6 +10,9 @@ from .config import HomeConnectConfig
 
 BASE_API = "https://api.home-connect.com/api"
 JSON_HEADER = "application/vnd.bsh.sdk.v1+json"
+
+# Globales Lock für Token-Refresh (verhindert gleichzeitige Refreshes)
+_token_refresh_lock = Lock()
 
 
 class HomeConnectClient:
@@ -24,8 +28,17 @@ class HomeConnectClient:
             return
         # Refresh kurz vor Ablauf
         if self.tokens.is_expired():
-            self.tokens = refresh_access_token(self.config, self.tokens.refresh_token)
-            self.tokens.save(self.config.token_path)
+            # Verwende Lock, um sicherzustellen, dass nur ein Thread den Token refresht
+            with _token_refresh_lock:
+                # Prüfe nochmal, ob Token bereits refreshed wurde (von anderem Thread)
+                if self.tokens.is_expired():
+                    self.tokens = refresh_access_token(self.config, self.tokens.refresh_token)
+                    self.tokens.save(self.config.token_path)
+                else:
+                    # Token wurde bereits von anderem Thread refreshed, lade neu
+                    self.tokens = TokenBundle.from_file(self.config.token_path)
+                    if not self.tokens:
+                        raise RuntimeError("Token konnte nicht geladen werden.")
 
     def _headers(self) -> Dict[str, str]:
         self._ensure_token()
@@ -39,7 +52,8 @@ class HomeConnectClient:
         self, method: str, endpoint: str, *, json_payload: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         url = f"{BASE_API}{endpoint}"
-        resp = requests.request(method, url, headers=self._headers(), json=json_payload, timeout=30)
+        # Timeout: 10 Sekunden für Verbindung, 30 Sekunden insgesamt
+        resp = requests.request(method, url, headers=self._headers(), json=json_payload, timeout=(10, 30))
         if not resp.ok:
             error_detail = resp.text
             try:
@@ -135,3 +149,18 @@ class HomeConnectClient:
         haid = haid or self.config.haid
         payload = {"data": data or {}}
         return self._request("POST", f"/homeappliances/{haid}/commands/{command_key}", json_payload=payload)
+
+    def get_programs(self, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Ruft die verfügbaren Programme des Geräts ab."""
+        haid = haid or self.config.haid
+        return self._request("GET", f"/homeappliances/{haid}/programs/available")
+
+    def get_selected_program(self, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Ruft das aktuell ausgewählte Programm ab."""
+        haid = haid or self.config.haid
+        return self._request("GET", f"/homeappliances/{haid}/programs/selected")
+
+    def get_active_program(self, haid: Optional[str] = None) -> Dict[str, Any]:
+        """Ruft das aktuell aktive (laufende) Programm ab."""
+        haid = haid or self.config.haid
+        return self._request("GET", f"/homeappliances/{haid}/programs/active")
