@@ -29,6 +29,7 @@ from homeconnect_coffee.api_monitor import get_monitor
 from homeconnect_coffee.client import HomeConnectClient
 from homeconnect_coffee.config import load_config
 from homeconnect_coffee.history import HistoryManager
+from homeconnect_coffee.services import CoffeeService, HistoryService, StatusService
 
 
 # Globale Variablen für Events-Stream
@@ -211,38 +212,9 @@ class CoffeeHandler(BaseHTTPRequestHandler):
     def _handle_wake(self, client: HomeConnectClient) -> None:
         """Aktiviert das Gerät aus dem Standby."""
         try:
-            # Versuche zuerst direkt zu aktivieren - schneller als erst Status zu prüfen
-            try:
-                client.set_setting("BSH.Common.Setting.PowerState", "BSH.Common.EnumType.PowerState.On")
-                self._send_json({"status": "activated", "message": "Gerät wurde aktiviert"}, status_code=200)
-                return
-            except RuntimeError:
-                # Wenn Aktivierung fehlschlägt, prüfe ob Gerät bereits aktiv ist
-                try:
-                    status = client.get_status()
-                    for item in status.get("data", {}).get("status", []):
-                        if item.get("key") == "BSH.Common.Status.OperationState":
-                            op_state = item.get("value")
-                            if op_state != "BSH.Common.EnumType.OperationState.Inactive":
-                                self._send_json({"status": "already_on", "message": "Gerät ist bereits aktiviert"}, status_code=200)
-                                return
-                            break
-                    
-                    # Fallback: Prüfe Settings
-                    settings = client.get_settings()
-                    for setting in settings.get("data", {}).get("settings", []):
-                        if setting.get("key") == "BSH.Common.Setting.PowerState":
-                            power_state = setting.get("value")
-                            if power_state == "BSH.Common.EnumType.PowerState.On":
-                                self._send_json({"status": "already_on", "message": "Gerät ist bereits aktiviert"}, status_code=200)
-                                return
-                            break
-                    
-                    self._send_json({"status": "unknown", "message": "Konnte PowerState nicht bestimmen"}, status_code=200)
-                except Exception:
-                    # Wenn Status-Prüfung fehlschlägt, nehme an dass Aktivierung erfolgreich war
-                    self._send_json({"status": "activated", "message": "Gerät wurde aktiviert"}, status_code=200)
-                    
+            coffee_service = CoffeeService(client)
+            result = coffee_service.wake_device()
+            self._send_json(result, status_code=200)
         except requests.exceptions.Timeout:
             self._send_error(504, "API-Anfrage hat das Timeout überschritten")
         except Exception as e:
@@ -250,44 +222,15 @@ class CoffeeHandler(BaseHTTPRequestHandler):
 
     def _handle_status(self, client: HomeConnectClient) -> None:
         """Gibt den Gerätestatus zurück."""
-        status = client.get_status()
+        status_service = StatusService(client)
+        status = status_service.get_status()
         self._send_json(status, status_code=200)
 
     def _handle_extended_status(self, client: HomeConnectClient) -> None:
         """Gibt erweiterten Status mit Settings und Programmen zurück."""
         try:
-            status = client.get_status()
-            settings = client.get_settings()
-            
-            # Versuche Programme abzurufen (können fehlschlagen wenn Gerät nicht bereit)
-            programs_available = {}
-            program_selected = {}
-            program_active = {}
-            
-            try:
-                programs_available = client.get_programs()
-            except Exception:
-                pass
-            
-            try:
-                program_selected = client.get_selected_program()
-            except Exception:
-                pass
-            
-            try:
-                program_active = client.get_active_program()
-            except Exception:
-                pass
-
-            extended_status = {
-                "status": status,
-                "settings": settings,
-                "programs": {
-                    "available": programs_available,
-                    "selected": program_selected,
-                    "active": program_active,
-                },
-            }
+            status_service = StatusService(client)
+            extended_status = status_service.get_extended_status()
             self._send_json(extended_status, status_code=200)
         except Exception as e:
             self._send_error(500, str(e))
@@ -317,6 +260,8 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             return
         
         try:
+            history_service = HistoryService(history_manager)
+            
             # Parse Query-Parameter
             parsed_path = urlparse(self.path)
             query_params = parse_qs(parsed_path.query)
@@ -332,15 +277,15 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             if query_params.get("daily_usage"):
                 # Tägliche Nutzung
                 days = min(int(query_params.get("days", ["7"])[0]), 365)  # Max 1 Jahr
-                usage = history_manager.get_daily_usage(days)
+                usage = history_service.get_daily_usage(days)
                 self._send_json({"daily_usage": usage}, status_code=200)
             elif query_params.get("program_counts"):
                 # Programm-Zählungen
-                counts = history_manager.get_program_counts()
+                counts = history_service.get_program_counts()
                 self._send_json({"program_counts": counts}, status_code=200)
             else:
                 # Standard-History
-                history = history_manager.get_history(event_type, limit_int, before_timestamp)
+                history = history_service.get_history(event_type, limit_int, before_timestamp)
                 self._send_json({"history": history}, status_code=200)
         except ValueError as e:
             self._send_error(400, f"Ungültiger Parameter: {str(e)}")
@@ -430,31 +375,10 @@ class CoffeeHandler(BaseHTTPRequestHandler):
 
     def _handle_brew(self, client: HomeConnectClient, fill_ml: int) -> None:
         """Startet einen Espresso."""
-        from scripts.brew_espresso import ESPRESSO_KEY, build_options
-
         try:
-            # Aktiviere Gerät falls nötig
-            try:
-                settings = client.get_settings()
-                for setting in settings.get("data", {}).get("settings", []):
-                    if setting.get("key") == "BSH.Common.Setting.PowerState":
-                        if setting.get("value") == "BSH.Common.EnumType.PowerState.Standby":
-                            client.set_setting("BSH.Common.Setting.PowerState", "BSH.Common.EnumType.PowerState.On")
-            except Exception as e:
-                if CoffeeHandler.enable_logging:
-                    print(f"Fehler beim Aktivieren des Geräts: {e}")
-
-            # Wähle Programm aus
-            options = build_options(fill_ml, None)
-            try:
-                client.clear_selected_program()
-            except Exception:
-                pass
-
-            client.select_program(ESPRESSO_KEY, options=options)
-            client.start_program()
-
-            self._send_json({"status": "started", "message": f"Espresso ({fill_ml} ml) wird zubereitet"}, status_code=200)
+            coffee_service = CoffeeService(client)
+            result = coffee_service.brew_espresso(fill_ml)
+            self._send_json(result, status_code=200)
         except Exception as e:
             if CoffeeHandler.enable_logging:
                 print(f"Fehler beim Starten des Programms: {e}")
