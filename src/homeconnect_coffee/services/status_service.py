@@ -1,4 +1,4 @@
-"""Service für Status-Abfragen."""
+"""Service for status queries."""
 
 from __future__ import annotations
 
@@ -8,37 +8,37 @@ from ..client import HomeConnectClient
 
 
 class StatusService:
-    """Service für Status-Abfragen."""
+    """Service for status queries."""
 
     def __init__(self, client: HomeConnectClient) -> None:
-        """Initialisiert den StatusService mit einem HomeConnectClient."""
+        """Initializes the StatusService with a HomeConnectClient."""
         self.client = client
 
     def get_status(self) -> Dict[str, Any]:
-        """Gibt den Gerätestatus zurück.
+        """Returns the device status.
         
         Returns:
-            Dict mit Status-Daten von der HomeConnect API
+            Dict with status data from the HomeConnect API
         """
         return self.client.get_status()
 
     def get_extended_status(self) -> Dict[str, Any]:
-        """Gibt erweiterten Status mit Settings und Programmen zurück.
+        """Returns extended status with settings and programs.
         
         Returns:
-            Dict mit:
-            - status: Gerätestatus
-            - settings: Geräte-Einstellungen
+            Dict with:
+            - status: Device status
+            - settings: Device settings
             - programs: {
-                - available: Verfügbare Programme
-                - selected: Ausgewähltes Programm
-                - active: Aktives Programm
+                - available: Available programs
+                - selected: Selected program
+                - active: Active program
               }
         """
         status = self.client.get_status()
         settings = self.client.get_settings()
         
-        # Versuche Programme abzurufen (können fehlschlagen wenn Gerät nicht bereit)
+        # Try to retrieve programs (may fail if device is not ready)
         programs_available = {}
         program_selected = {}
         program_active = {}

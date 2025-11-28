@@ -1,4 +1,4 @@
-"""Unit-Tests für HTTP-Handler."""
+"""Unit tests for HTTP handlers."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from homeconnect_coffee.handlers import (
 
 @pytest.fixture
 def mock_request():
-    """Erstellt einen Mock-HTTP-Request."""
+    """Creates a mock HTTP request."""
     request = Mock()
     request.makefile.return_value = BytesIO()
     return request
@@ -29,13 +29,13 @@ def mock_request():
 
 @pytest.fixture
 def mock_server():
-    """Erstellt einen Mock-HTTP-Server."""
+    """Creates a mock HTTP server."""
     return Mock()
 
 
 @pytest.fixture
 def handler_kwargs(mock_request, mock_server):
-    """Erstellt Standard-Kwargs für Handler."""
+    """Creates standard kwargs for handlers."""
     return {
         "request": mock_request,
         "client_address": ("127.0.0.1", 12345),
@@ -45,16 +45,16 @@ def handler_kwargs(mock_request, mock_server):
 
 @pytest.fixture
 def error_handler():
-    """Erstellt einen ErrorHandler für Tests."""
+    """Creates an ErrorHandler for tests."""
     return ErrorHandler(enable_logging=False)
 
 
 @pytest.mark.unit
 class TestBaseHandler:
-    """Tests für BaseHandler Klasse."""
+    """Tests for BaseHandler class."""
 
     def test_mask_token_in_path(self, handler_kwargs):
-        """Test _mask_token_in_path() maskiert Token."""
+        """Test _mask_token_in_path() masks token."""
         handler = BaseHandler(**handler_kwargs)
         handler.path = "/test?token=secret123"
         
@@ -64,14 +64,14 @@ class TestBaseHandler:
         assert "secret123" not in masked
 
     def test_check_auth_no_token_configured(self, handler_kwargs):
-        """Test _check_auth() wenn kein Token konfiguriert."""
+        """Test _check_auth() when no token is configured."""
         handler = BaseHandler(**handler_kwargs)
         handler.api_token = None
         
         assert handler._check_auth() is True
 
     def test_check_auth_valid_header(self, handler_kwargs):
-        """Test _check_auth() mit gültigem Header-Token."""
+        """Test _check_auth() with valid header token."""
         handler = BaseHandler(**handler_kwargs)
         handler.api_token = "test-token"
         handler.headers = Mock()
@@ -80,7 +80,7 @@ class TestBaseHandler:
         assert handler._check_auth() is True
 
     def test_check_auth_invalid_header(self, handler_kwargs):
-        """Test _check_auth() mit ungültigem Header-Token."""
+        """Test _check_auth() with invalid header token."""
         handler = BaseHandler(**handler_kwargs)
         handler.api_token = "test-token"
         handler.headers = Mock()
@@ -90,7 +90,7 @@ class TestBaseHandler:
         assert handler._check_auth() is False
 
     def test_check_auth_valid_query(self, handler_kwargs):
-        """Test _check_auth() mit gültigem Query-Token."""
+        """Test _check_auth() with valid query token."""
         handler = BaseHandler(**handler_kwargs)
         handler.api_token = "test-token"
         handler.path = "/test?token=test-token"
@@ -99,7 +99,7 @@ class TestBaseHandler:
         assert handler._check_auth() is True
 
     def test_require_auth_sends_401(self, handler_kwargs, error_handler):
-        """Test _require_auth() sendet 401 bei fehlender Auth."""
+        """Test _require_auth() sends 401 on missing auth."""
         handler = BaseHandler(**handler_kwargs)
         handler.api_token = "test-token"
         handler.error_handler = error_handler
@@ -114,10 +114,10 @@ class TestBaseHandler:
         result = handler._require_auth()
         
         assert result is False
-        assert handler.send_response.called  # Response wurde gesendet
+        assert handler.send_response.called  # Response was sent
 
     def test_parse_path(self, handler_kwargs):
-        """Test _parse_path() parst Pfad und Query-Parameter."""
+        """Test _parse_path() parses path and query parameters."""
         handler = BaseHandler(**handler_kwargs)
         handler.path = "/test?key=value&other=123"
         
@@ -130,13 +130,13 @@ class TestBaseHandler:
 
 @pytest.mark.unit
 class TestCoffeeHandler:
-    """Tests für CoffeeHandler Klasse."""
+    """Tests for CoffeeHandler class."""
 
     def test_handle_wake(self, handler_kwargs, error_handler):
-        """Test handle_wake() statische Methode."""
+        """Test handle_wake() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/wake"
-        router.api_token = None  # Keine Auth für Test
+        router.api_token = None  # No auth for test
         router.error_handler = error_handler
         router.wfile = BytesIO()
         router.send_response = Mock()
@@ -159,7 +159,7 @@ class TestCoffeeHandler:
             mock_service.wake_device.assert_called_once()
 
     def test_handle_brew(self, handler_kwargs, error_handler):
-        """Test handle_brew() statische Methode."""
+        """Test handle_brew() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/brew"
         router.api_token = None
@@ -187,10 +187,10 @@ class TestCoffeeHandler:
 
 @pytest.mark.unit
 class TestStatusHandler:
-    """Tests für StatusHandler Klasse."""
+    """Tests for StatusHandler class."""
 
     def test_handle_status(self, handler_kwargs, error_handler):
-        """Test handle_status() statische Methode."""
+        """Test handle_status() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/status"
         router.api_token = None
@@ -216,7 +216,7 @@ class TestStatusHandler:
             mock_service.get_status.assert_called_once()
 
     def test_handle_extended_status(self, handler_kwargs, error_handler):
-        """Test handle_extended_status() statische Methode."""
+        """Test handle_extended_status() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/api/status"
         router.api_token = None
@@ -244,10 +244,10 @@ class TestStatusHandler:
 
 @pytest.mark.unit
 class TestHistoryHandler:
-    """Tests für HistoryHandler Klasse."""
+    """Tests for HistoryHandler class."""
 
     def test_handle_history(self, handler_kwargs, error_handler, temp_history_db):
-        """Test handle_history() statische Methode."""
+        """Test handle_history() static method."""
         from homeconnect_coffee.history import HistoryManager
         import homeconnect_coffee.handlers.history_handler as history_module
         
@@ -260,7 +260,7 @@ class TestHistoryHandler:
         router.send_header = Mock()
         router.end_headers = Mock()
         
-        # Setze history_manager im Modul
+        # Set history_manager in module
         history_module.history_manager = HistoryManager(temp_history_db)
         
         try:
@@ -276,7 +276,7 @@ class TestHistoryHandler:
             history_module.history_manager = None
 
     def test_handle_api_stats(self, handler_kwargs, error_handler):
-        """Test handle_api_stats() statische Methode."""
+        """Test handle_api_stats() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/api/stats"
         router.api_token = None
@@ -298,10 +298,10 @@ class TestHistoryHandler:
 
 @pytest.mark.unit
 class TestDashboardHandler:
-    """Tests für DashboardHandler Klasse."""
+    """Tests for DashboardHandler class."""
 
     def test_handle_dashboard(self, handler_kwargs, error_handler):
-        """Test handle_dashboard() statische Methode."""
+        """Test handle_dashboard() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/dashboard"
         router.api_token = None
@@ -311,12 +311,12 @@ class TestDashboardHandler:
         router.send_header = Mock()
         router.end_headers = Mock()
         
-        # Mock Path komplett - verwende side_effect für komplexe parent-Kette
+        # Mock Path completely - use side_effect for complex parent chain
         mock_dashboard = Mock()
         mock_dashboard.exists.return_value = True
         mock_dashboard.read_text.return_value = "<html>Dashboard</html>"
         
-        # Erstelle Mock-Kette für parent.parent.parent.parent / "scripts" / "dashboard.html"
+        # Create mock chain for parent.parent.parent.parent / "scripts" / "dashboard.html"
         mock_scripts = Mock()
         mock_scripts.__truediv__ = Mock(return_value=mock_dashboard)
         
@@ -338,13 +338,13 @@ class TestDashboardHandler:
         with patch("homeconnect_coffee.handlers.dashboard_handler.Path", return_value=mock_file_path):
             DashboardHandler.handle_dashboard(router)
             
-            # Prüfe dass read_text aufgerufen wurde
+            # Check that read_text was called
             mock_dashboard.read_text.assert_called_once()
-            # Prüfe dass send_response aufgerufen wurde
+            # Check that send_response was called
             router.send_response.assert_called_once_with(200)
 
     def test_handle_health(self, handler_kwargs, error_handler):
-        """Test handle_health() statische Methode."""
+        """Test handle_health() static method."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/health"
         router.api_token = None
@@ -356,23 +356,23 @@ class TestDashboardHandler:
         
         DashboardHandler.handle_health(router)
         
-        # Prüfe dass JSON gesendet wurde
+        # Check that JSON was sent
         assert router.wfile.getvalue() == b'{\n  "status": "ok"\n}'
 
 
 @pytest.mark.unit
 class TestRequestRouter:
-    """Tests für RequestRouter Klasse."""
+    """Tests for RequestRouter class."""
 
     def test_route_coffee_handler(self, handler_kwargs, error_handler):
-        """Test Router leitet /wake an CoffeeHandler weiter."""
+        """Test router forwards /wake to CoffeeHandler."""
         router = RequestRouter(**handler_kwargs)
         router.path = "/wake"
         router.command = "GET"
         router.enable_logging = False
         router.api_token = None
         router.error_handler = error_handler
-        router.auth_middleware = None  # Keine Middleware für Test
+        router.auth_middleware = None  # No middleware for test
         router.wfile = BytesIO()
         router.headers = Mock()
         router.rfile = BytesIO()
@@ -382,14 +382,14 @@ class TestRequestRouter:
             mock_handle.assert_called_once_with(router, None)
 
     def test_route_status_handler(self, handler_kwargs, error_handler):
-        """Test Router leitet /status an StatusHandler weiter."""
+        """Test router forwards /status to StatusHandler."""
         router = RequestRouter(**handler_kwargs)
         router.path = "/status"
         router.command = "GET"
         router.enable_logging = False
         router.api_token = None
         router.error_handler = error_handler
-        router.auth_middleware = None  # Keine Middleware für Test
+        router.auth_middleware = None  # No middleware for test
         router.wfile = BytesIO()
         router.headers = Mock()
         router.rfile = BytesIO()
@@ -399,7 +399,7 @@ class TestRequestRouter:
             mock_handle.assert_called_once_with(router, None)
 
     def test_route_history_handler(self, handler_kwargs, error_handler):
-        """Test Router leitet /api/history an HistoryHandler weiter."""
+        """Test router forwards /api/history to HistoryHandler."""
         router = RequestRouter(**handler_kwargs)
         router.path = "/api/history"
         router.command = "GET"
@@ -413,11 +413,11 @@ class TestRequestRouter:
         with patch("homeconnect_coffee.handlers.router.HistoryHandler.handle_history") as mock_handle:
             router._route_request()
             mock_handle.assert_called_once()
-            # Prüfe dass router und query_params übergeben wurden
+            # Check that router and query_params were passed
             assert mock_handle.call_args[0][0] == router
 
     def test_route_dashboard_handler(self, handler_kwargs, error_handler):
-        """Test Router leitet /dashboard an DashboardHandler weiter."""
+        """Test router forwards /dashboard to DashboardHandler."""
         router = RequestRouter(**handler_kwargs)
         router.path = "/dashboard"
         router.command = "GET"
@@ -433,7 +433,7 @@ class TestRequestRouter:
             mock_handle.assert_called_once_with(router)
 
     def test_route_not_found(self, handler_kwargs, error_handler):
-        """Test Router sendet 404 für unbekannte Pfade."""
+        """Test router sends 404 for unknown paths."""
         router = RequestRouter(**handler_kwargs)
         router.path = "/unknown"
         router.command = "GET"

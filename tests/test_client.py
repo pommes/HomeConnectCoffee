@@ -1,4 +1,4 @@
-"""Unit-Tests für client.py (HomeConnectClient)."""
+"""Unit tests for client.py (HomeConnectClient)."""
 
 from __future__ import annotations
 
@@ -12,22 +12,22 @@ from homeconnect_coffee.client import HomeConnectClient
 
 @pytest.mark.unit
 class TestHomeConnectClient:
-    """Tests für HomeConnectClient Klasse."""
+    """Tests for HomeConnectClient class."""
 
     def test_init_without_token_raises_error(self, test_config):
-        """Test dass __init__ einen Fehler wirft, wenn kein Token gefunden wird."""
-        # Token-Datei existiert nicht
-        with pytest.raises(RuntimeError, match="Kein Token gefunden"):
+        """Test that __init__ raises an error when no token is found."""
+        # Token file does not exist
+        with pytest.raises(RuntimeError, match="No token found"):
             HomeConnectClient(test_config)
 
     @patch("homeconnect_coffee.client.record_api_call")
     @patch("homeconnect_coffee.client.requests.request")
     def test_get_status(self, mock_request, mock_record_api_call, test_config, valid_token_bundle, temp_token_file):
-        """Test get_status() macht korrekten API-Call."""
-        # Speichere Token
+        """Test get_status() makes correct API call."""
+        # Save token
         valid_token_bundle.save(temp_token_file)
         
-        # Mock API-Response
+        # Mock API response
         mock_response = Mock()
         mock_response.ok = True
         mock_response.status_code = 200
@@ -37,16 +37,16 @@ class TestHomeConnectClient:
         client = HomeConnectClient(test_config)
         result = client.get_status()
         
-        # Prüfe dass API-Call gemacht wurde
+        # Check that API call was made
         mock_request.assert_called_once()
         call_args = mock_request.call_args
         assert call_args[0][0] == "GET"
         assert "/homeappliances/test_haid/status" in call_args[0][1]
         
-        # Prüfe dass Monitoring aufgerufen wurde
+        # Check that monitoring was called
         mock_record_api_call.assert_called_once()
         
-        # Prüfe dass korrekte Headers gesendet wurden
+        # Check that correct headers were sent
         headers = call_args[1]["headers"]
         assert "Authorization" in headers
         assert headers["Authorization"] == "Bearer test_access_token"
@@ -56,7 +56,7 @@ class TestHomeConnectClient:
     @patch("homeconnect_coffee.client.record_api_call")
     @patch("homeconnect_coffee.client.requests.request")
     def test_get_status_with_custom_haid(self, mock_request, mock_record_api_call, test_config, valid_token_bundle, temp_token_file):
-        """Test get_status() mit custom haid."""
+        """Test get_status() with custom haid."""
         valid_token_bundle.save(temp_token_file)
         
         mock_response = Mock()
@@ -74,7 +74,7 @@ class TestHomeConnectClient:
     @patch("homeconnect_coffee.client.record_api_call")
     @patch("homeconnect_coffee.client.requests.request")
     def test_select_program(self, mock_request, mock_record_api_call, test_config, valid_token_bundle, temp_token_file):
-        """Test select_program() macht korrekten API-Call."""
+        """Test select_program() makes correct API call."""
         valid_token_bundle.save(temp_token_file)
         
         mock_response = Mock()
@@ -91,7 +91,7 @@ class TestHomeConnectClient:
         assert call_args[0][0] == "PUT"
         assert "/homeappliances/test_haid/programs/selected" in call_args[0][1]
         
-        # Prüfe Payload
+        # Check payload
         json_payload = call_args[1]["json"]
         assert json_payload["data"]["key"] == "Espresso"
         assert json_payload["data"]["options"] == options
@@ -99,10 +99,10 @@ class TestHomeConnectClient:
     @patch("homeconnect_coffee.client.record_api_call")
     @patch("homeconnect_coffee.client.requests.request")
     def test_start_program(self, mock_request, mock_record_api_call, test_config, valid_token_bundle, temp_token_file):
-        """Test start_program() macht korrekte API-Calls."""
+        """Test start_program() makes correct API calls."""
         valid_token_bundle.save(temp_token_file)
         
-        # Mock für get_selected_program
+        # Mock for get_selected_program
         selected_response = Mock()
         selected_response.ok = True
         selected_response.status_code = 200
@@ -116,13 +116,13 @@ class TestHomeConnectClient:
             }
         }
         
-        # Mock für start_program
+        # Mock for start_program
         start_response = Mock()
         start_response.ok = True
         start_response.status_code = 200
         start_response.json.return_value = {"data": {"key": "Espresso"}}
         
-        # Mock request() um verschiedene Responses zurückzugeben
+        # Mock request() to return different responses
         def request_side_effect(*args, **kwargs):
             if "selected" in args[1]:
                 return selected_response
@@ -135,20 +135,20 @@ class TestHomeConnectClient:
         client = HomeConnectClient(test_config)
         result = client.start_program()
         
-        # Prüfe dass 2 API-Calls gemacht wurden (selected + active)
+        # Check that 2 API calls were made (selected + active)
         assert mock_request.call_count == 2
         
-        # Prüfe dass AromaSelect gefiltert wurde
+        # Check that AromaSelect was filtered
         active_call = [call for call in mock_request.call_args_list if "active" in call[0][1]][0]
         json_payload = active_call[1]["json"]
         options = json_payload["data"]["options"]
-        assert len(options) == 1  # AromaSelect sollte entfernt sein
+        assert len(options) == 1  # AromaSelect should be removed
         assert options[0]["key"] == "FillQuantity"
 
     @patch("homeconnect_coffee.client.record_api_call")
     @patch("homeconnect_coffee.client.requests.request")
     def test_api_error_raises_runtime_error(self, mock_request, mock_record_api_call, test_config, valid_token_bundle, temp_token_file):
-        """Test dass API-Fehler RuntimeError werfen."""
+        """Test that API errors raise RuntimeError."""
         valid_token_bundle.save(temp_token_file)
         
         mock_response = Mock()
@@ -160,13 +160,13 @@ class TestHomeConnectClient:
         
         client = HomeConnectClient(test_config)
         
-        with pytest.raises(RuntimeError, match="API-Anfrage fehlgeschlagen"):
+        with pytest.raises(RuntimeError, match="API request failed"):
             client.get_status()
 
     @patch("homeconnect_coffee.client.record_api_call")
     @patch("homeconnect_coffee.client.requests.request")
     def test_204_response_returns_empty_dict(self, mock_request, mock_record_api_call, test_config, valid_token_bundle, temp_token_file):
-        """Test dass 204 Response leeres Dict zurückgibt."""
+        """Test that 204 response returns empty dict."""
         valid_token_bundle.save(temp_token_file)
         
         mock_response = Mock()
@@ -191,10 +191,10 @@ class TestHomeConnectClient:
         expired_token_bundle, 
         temp_token_file
     ):
-        """Test dass abgelaufene Tokens automatisch erneuert werden."""
+        """Test that expired tokens are automatically renewed."""
         expired_token_bundle.save(temp_token_file)
         
-        # Mock für Token-Refresh
+        # Mock for token refresh
         from datetime import datetime
         new_token = expired_token_bundle.__class__(
             access_token="new_access_token",
@@ -205,7 +205,7 @@ class TestHomeConnectClient:
         )
         mock_refresh.return_value = new_token
         
-        # Mock für API-Response
+        # Mock for API response
         mock_response = Mock()
         mock_response.ok = True
         mock_response.status_code = 200
@@ -215,16 +215,16 @@ class TestHomeConnectClient:
         client = HomeConnectClient(test_config)
         client.get_status()
         
-        # Prüfe dass Token-Refresh aufgerufen wurde
+        # Check that token refresh was called
         mock_refresh.assert_called_once_with(test_config, "test_refresh_token")
         
-        # Prüfe dass neuer Token verwendet wurde
+        # Check that new token was used
         call_args = mock_request.call_args
         headers = call_args[1]["headers"]
         assert headers["Authorization"] == "Bearer new_access_token"
 
     def test_get_access_token(self, test_config, valid_token_bundle, temp_token_file):
-        """Test get_access_token() gibt Token zurück."""
+        """Test get_access_token() returns token."""
         valid_token_bundle.save(temp_token_file)
         
         client = HomeConnectClient(test_config)

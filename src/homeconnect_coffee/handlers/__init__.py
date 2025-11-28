@@ -1,4 +1,4 @@
-"""HTTP-Handler für HomeConnect Coffee Server."""
+"""HTTP handlers for HomeConnect Coffee Server."""
 
 from .base_handler import BaseHandler
 from .coffee_handler import CoffeeHandler

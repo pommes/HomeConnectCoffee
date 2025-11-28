@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -155,29 +155,29 @@
             <h1>☕ HomeConnect Coffee Dashboard</h1>
             <p>
                 <span class="status-indicator" id="connectionStatus"></span>
-                <span id="connectionText">Verbinde...</span>
+                <span id="connectionText">Connecting...</span>
             </p>
         </header>
 
         <div class="grid">
             <div class="card">
-                <h2>Live-Status</h2>
+                <h2>Live Status</h2>
                 <div id="liveStatus">
-                    <div class="loading">Lade Status...</div>
+                    <div class="loading">Loading status...</div>
                 </div>
             </div>
 
             <div class="card">
-                <h2>Aktives Programm</h2>
+                <h2>Active Program</h2>
                 <div id="activeProgram">
-                    <div class="loading">Lade Programm...</div>
+                    <div class="loading">Loading program...</div>
                 </div>
             </div>
         </div>
 
         <div class="grid">
             <div class="card full-width">
-                <h2>Programm-Nutzung</h2>
+                <h2>Program Usage</h2>
                 <div class="chart-container">
                     <canvas id="programChart"></canvas>
                 </div>
@@ -186,7 +186,7 @@
 
         <div class="grid">
             <div class="card full-width">
-                <h2>Tägliche Nutzung (letzte 7 Tage)</h2>
+                <h2>Daily Usage (last 7 days)</h2>
                 <div class="chart-container">
                     <canvas id="dailyChart"></canvas>
                 </div>
@@ -195,16 +195,16 @@
 
         <div class="grid">
             <div class="card full-width">
-                <h2>Event-Log</h2>
+                <h2>Event Log</h2>
                 <div class="event-log" id="eventLog">
-                    <div class="loading">Warte auf Events...</div>
+                    <div class="loading">Waiting for events...</div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Konfiguration
+        // Configuration
         const API_BASE = window.location.origin;
         const API_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
 
@@ -212,36 +212,36 @@
         let programChart = null;
         let dailyChart = null;
 
-        // EventSource für Live-Updates
+        // EventSource for live updates
         let eventSource = null;
         
-        // Lazy Loading State
+        // Lazy loading state
         let isLoadingMoreEvents = false;
         let hasMoreEvents = true;
         let oldestEventTimestamp = null;
 
-        // Initialisierung
+        // Initialization
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
             setupInfiniteScroll();
-            // Lade Daten - Initial Data zuerst, dann Event History
+            // Load data - initial data first, then event history
             loadInitialData().then(() => {
-                // Event History nach Initial Data laden
+                // Load event history after initial data
                 loadEventHistory();
             });
             connectEventStream();
-            // Kein setInterval mehr - Updates kommen über Event-Stream
+            // No setInterval anymore - updates come via event stream
         });
 
         function initCharts() {
-            // Programm-Nutzung Chart
+            // Program usage chart
             const programCtx = document.getElementById('programChart').getContext('2d');
             programChart = new Chart(programCtx, {
                 type: 'bar',
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Anzahl',
+                        label: 'Count',
                         data: [],
                         backgroundColor: 'rgba(102, 126, 234, 0.8)',
                         borderColor: 'rgba(102, 126, 234, 1)',
@@ -262,14 +262,14 @@
                 }
             });
 
-            // Tägliche Nutzung Chart
+            // Daily usage chart
             const dailyCtx = document.getElementById('dailyChart').getContext('2d');
             dailyChart = new Chart(dailyCtx, {
                 type: 'line',
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Nutzung pro Tag',
+                        label: 'Usage per day',
                         data: [],
                         borderColor: 'rgba(102, 126, 234, 1)',
                         backgroundColor: 'rgba(102, 126, 234, 0.1)',
@@ -295,7 +295,7 @@
 
         async function loadInitialData() {
             try {
-                // Status laden
+                // Load status
                 const statusUrl = API_TOKEN 
                     ? `${API_BASE}/api/status?token=${encodeURIComponent(API_TOKEN)}`
                     : `${API_BASE}/api/status`;
@@ -304,26 +304,26 @@
                     const statusData = await statusResponse.json();
                     updateLiveStatus(statusData);
                 } else {
-                    // Fehler beim Laden des Status
-                    console.error('Fehler beim Laden des Status:', statusResponse.status, statusResponse.statusText);
+                    // Error loading status
+                    console.error('Error loading status:', statusResponse.status, statusResponse.statusText);
                     const liveStatusDiv = document.getElementById('liveStatus');
                     if (liveStatusDiv && liveStatusDiv.querySelector('.loading')) {
                         liveStatusDiv.innerHTML = `
-                            <div class="error">Fehler beim Laden des Status (${statusResponse.status})</div>
+                            <div class="error">Error loading status (${statusResponse.status})</div>
                         `;
                     }
                 }
 
-                // History laden
+                // Load history
                 await loadHistory();
             } catch (error) {
-                console.error('Fehler beim Laden der Daten:', error);
-                // Zeige Fehler in der UI
+                console.error('Error loading data:', error);
+                // Show error in UI
                 const liveStatusDiv = document.getElementById('liveStatus');
                 if (liveStatusDiv) {
                     if (liveStatusDiv.querySelector('.loading')) {
                         liveStatusDiv.innerHTML = `
-                            <div class="error">Fehler beim Laden: ${error.message}</div>
+                            <div class="error">Error loading: ${error.message}</div>
                         `;
                     }
                 }
@@ -333,9 +333,9 @@
         function updateLiveStatus(data) {
             const liveStatusDiv = document.getElementById('liveStatus');
             
-            // PowerState aus Settings extrahieren
-            let powerState = 'Unbekannt';
-            let operationState = 'Unbekannt';
+            // Extract PowerState from settings
+            let powerState = 'Unknown';
+            let operationState = 'Unknown';
             
             if (data.settings && data.settings.data && data.settings.data.settings) {
                 data.settings.data.settings.forEach(setting => {
@@ -345,7 +345,7 @@
                 });
             }
             
-            // OperationState aus Status extrahieren
+            // Extract OperationState from status
             if (data.status && data.status.data && data.status.data.status) {
                 data.status.data.status.forEach(status => {
                     if (status.key === 'BSH.Common.Status.OperationState') {
@@ -354,7 +354,7 @@
                 });
             }
 
-            // Status-Items erstellen
+            // Create status items
             liveStatusDiv.innerHTML = `
                 <div class="status-item">
                     <span class="status-label">Power State:</span>
@@ -366,22 +366,22 @@
                 </div>
             `;
 
-            // Aktives Programm
+            // Active program
             const activeProgramDiv = document.getElementById('activeProgram');
             if (data.programs && data.programs.active && data.programs.active.data) {
                 const program = data.programs.active.data;
-                const programKey = program.key || 'Kein Programm';
+                const programKey = program.key || 'No program';
                 activeProgramDiv.innerHTML = `
                     <div class="status-item">
-                        <span class="status-label">Programm:</span>
+                        <span class="status-label">Program:</span>
                         <span class="status-value">${programKey.replace('ConsumerProducts.CoffeeMaker.Program.', '')}</span>
                     </div>
                 `;
             } else {
                 activeProgramDiv.innerHTML = `
                     <div class="status-item">
-                        <span class="status-label">Programm:</span>
-                        <span class="status-value">Kein aktives Programm</span>
+                        <span class="status-label">Program:</span>
+                        <span class="status-value">No active program</span>
                     </div>
                 `;
             }
@@ -389,7 +389,7 @@
 
         async function loadHistory() {
             try {
-                // Programm-Zählungen
+                // Program counts
                 const countsUrl = API_TOKEN
                     ? `${API_BASE}/api/history?program_counts=1&token=${encodeURIComponent(API_TOKEN)}`
                     : `${API_BASE}/api/history?program_counts=1`;
@@ -399,7 +399,7 @@
                     updateProgramChart(countsData.program_counts || {});
                 }
 
-                // Tägliche Nutzung
+                // Daily usage
                 const dailyUrl = API_TOKEN
                     ? `${API_BASE}/api/history?daily_usage=1&days=7&token=${encodeURIComponent(API_TOKEN)}`
                     : `${API_BASE}/api/history?daily_usage=1&days=7`;
@@ -409,19 +409,19 @@
                     updateDailyChart(dailyData.daily_usage || {});
                 }
             } catch (error) {
-                console.error('Fehler beim Laden der History:', error);
+                console.error('Error loading history:', error);
             }
         }
 
         async function loadEventHistory(beforeTimestamp = null) {
             if (isLoadingMoreEvents) {
-                return; // Verhindere mehrfaches gleichzeitiges Laden
+                return; // Prevent multiple simultaneous loads
             }
             
             try {
                 isLoadingMoreEvents = true;
                 
-                // Lade initial 20 Events, beim Nachladen weitere 20
+                // Load initial 20 events, 20 more when loading more
                 const limit = beforeTimestamp ? 20 : 20;
                 let historyUrl = API_TOKEN
                     ? `${API_BASE}/api/history?limit=${limit}&token=${encodeURIComponent(API_TOKEN)}`
@@ -438,7 +438,7 @@
                     
                     const eventLog = document.getElementById('eventLog');
                     
-                    // Initial Load: Leere Event-Log
+                    // Initial load: clear event log
                     if (!beforeTimestamp) {
                         if (eventLog.querySelector('.loading')) {
                             eventLog.innerHTML = '';
@@ -448,48 +448,48 @@
                     
                     if (events.length === 0) {
                         if (!beforeTimestamp) {
-                            eventLog.innerHTML = '<div class="loading">Noch keine Events gespeichert</div>';
+                            eventLog.innerHTML = '<div class="loading">No events stored yet</div>';
                         } else {
-                            // Keine weiteren Events
+                            // No more events
                             hasMoreEvents = false;
                             removeLoadingIndicator();
                         }
                     } else {
-                        // Events werden chronologisch zurückgegeben (älteste zuerst)
-                        // Für Anzeige: Neueste zuerst (oben), also umkehren beim Initial Load
-                        // Beim Nachladen: Events am Ende hinzufügen (sind bereits chronologisch sortiert)
+                        // Events are returned chronologically (oldest first)
+                        // For display: newest first (top), so reverse on initial load
+                        // When loading more: add events at end (already chronologically sorted)
                         
                         if (!beforeTimestamp) {
-                            // Initial Load: Neueste zuerst anzeigen (umkehren)
+                            // Initial load: show newest first (reverse)
                             const reversedEvents = [...events].reverse();
                             reversedEvents.forEach(event => {
-                                addEventToLogFromHistory(event, true); // true = oben einfügen
+                                addEventToLogFromHistory(event, true); // true = insert at top
                             });
                             
-                            // Speichere Timestamp des ältesten Events (für Nachladen)
+                            // Store timestamp of oldest event (for loading more)
                             if (events.length > 0) {
-                                oldestEventTimestamp = events[0].timestamp; // Ältestes Event
+                                oldestEventTimestamp = events[0].timestamp; // Oldest event
                             }
                         } else {
-                            // Nachladen: Events am Ende hinzufügen (chronologisch älteste zuerst)
+                            // Load more: add events at end (chronologically oldest first)
                             events.forEach(event => {
-                                addEventToLogFromHistory(event, false); // false = am Ende hinzufügen
+                                addEventToLogFromHistory(event, false); // false = add at end
                             });
                             
-                            // Aktualisiere Timestamp des ältesten geladenen Events
+                            // Update timestamp of oldest loaded event
                             if (events.length > 0) {
                                 oldestEventTimestamp = events[0].timestamp;
                             }
                         }
                         
-                        // Wenn weniger Events als Limit zurückgegeben wurden, gibt es keine weiteren
+                        // If fewer events than limit were returned, there are no more
                         if (events.length < limit) {
                             hasMoreEvents = false;
                         }
                     }
                 }
             } catch (error) {
-                console.error('Fehler beim Laden der Event-Historie:', error);
+                console.error('Error loading event history:', error);
             } finally {
                 isLoadingMoreEvents = false;
                 removeLoadingIndicator();
@@ -500,13 +500,13 @@
             const eventLog = document.getElementById('eventLog');
             
             eventLog.addEventListener('scroll', () => {
-                // Prüfe ob User nahe am Ende ist (100px vor Ende)
+                // Check if user is near the end (100px before end)
                 const scrollTop = eventLog.scrollTop;
                 const scrollHeight = eventLog.scrollHeight;
                 const clientHeight = eventLog.clientHeight;
                 
                 if (scrollTop + clientHeight >= scrollHeight - 100) {
-                    // Lade weitere Events, wenn noch welche vorhanden sind
+                    // Load more events if there are any
                     if (hasMoreEvents && !isLoadingMoreEvents && oldestEventTimestamp) {
                         showLoadingIndicator();
                         loadEventHistory(oldestEventTimestamp);
@@ -517,7 +517,7 @@
         
         function showLoadingIndicator() {
             const eventLog = document.getElementById('eventLog');
-            // Entferne vorhandenen Loading-Indikator
+            // Remove existing loading indicator
             const existing = eventLog.querySelector('.loading-more');
             if (existing) {
                 existing.remove();
@@ -525,7 +525,7 @@
             
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'loading loading-more';
-            loadingDiv.textContent = 'Lade weitere Events...';
+            loadingDiv.textContent = 'Loading more events...';
             eventLog.appendChild(loadingDiv);
         }
         
@@ -540,7 +540,7 @@
         function addEventToLogFromHistory(event, prepend = false) {
             const eventLog = document.getElementById('eventLog');
             
-            // Entferne Loading-Indikator falls vorhanden
+            // Remove loading indicator if present
             const loadingDiv = eventLog.querySelector('.loading-more');
             if (loadingDiv) {
                 loadingDiv.remove();
@@ -549,11 +549,11 @@
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
             
-            // Parse Timestamp
-            let timestamp = 'Unbekannt';
+            // Parse timestamp
+            let timestamp = 'Unknown';
             try {
                 const eventDate = new Date(event.timestamp);
-                timestamp = eventDate.toLocaleString('de-DE', {
+                timestamp = eventDate.toLocaleString('en-US', {
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric',
@@ -562,7 +562,7 @@
                     second: '2-digit'
                 });
             } catch (e) {
-                timestamp = event.timestamp || 'Unbekannt';
+                timestamp = event.timestamp || 'Unknown';
             }
             
             const eventType = (event.type || 'UNKNOWN').toUpperCase();
@@ -583,8 +583,8 @@
 
         function updateProgramChart(counts) {
             if (!counts || Object.keys(counts).length === 0) {
-                // Keine Daten - zeige Platzhalter
-                programChart.data.labels = ['Noch keine Daten'];
+                // No data - show placeholder
+                programChart.data.labels = ['No data yet'];
                 programChart.data.datasets[0].data = [0];
                 programChart.update();
                 return;
@@ -602,14 +602,14 @@
 
         function updateDailyChart(dailyUsage) {
             if (!dailyUsage || Object.keys(dailyUsage).length === 0) {
-                // Keine Daten - zeige Platzhalter
-                dailyChart.data.labels = ['Noch keine Daten'];
+                // No data - show placeholder
+                dailyChart.data.labels = ['No data yet'];
                 dailyChart.data.datasets[0].data = [0];
                 dailyChart.update();
                 return;
             }
 
-            // Sortiere nach Datum
+            // Sort by date
             const sortedDates = Object.keys(dailyUsage).sort();
             const values = sortedDates.map(date => dailyUsage[date]);
 
@@ -627,14 +627,14 @@
 
             eventSource.onopen = () => {
                 document.getElementById('connectionStatus').classList.remove('disconnected');
-                document.getElementById('connectionText').textContent = 'Verbunden';
+                document.getElementById('connectionText').textContent = 'Connected';
             };
 
             eventSource.onerror = () => {
                 document.getElementById('connectionStatus').classList.add('disconnected');
-                document.getElementById('connectionText').textContent = 'Verbindung getrennt';
+                document.getElementById('connectionText').textContent = 'Connection lost';
                 
-                // Reconnect nach 3 Sekunden
+                // Reconnect after 3 seconds
                 setTimeout(() => {
                     if (eventSource) {
                         eventSource.close();
@@ -648,7 +648,7 @@
                     const data = JSON.parse(event.data);
                     addEventToLog('message', data);
                 } catch (e) {
-                    console.error('Fehler beim Parsen von Event:', e);
+                    console.error('Error parsing event:', e);
                 }
             });
 
@@ -656,10 +656,10 @@
                 try {
                     const data = JSON.parse(event.data);
                     addEventToLog('STATUS', data);
-                    // Kein loadInitialData() mehr - Updates kommen über Event-Stream
-                    // Status wird beim Initial Load geladen, danach nur noch via Events aktualisiert
+                    // No loadInitialData() anymore - updates come via event stream
+                    // Status is loaded on initial load, then only updated via events
                 } catch (e) {
-                    console.error('Fehler beim Parsen von STATUS-Event:', e);
+                    console.error('Error parsing STATUS event:', e);
                 }
             });
 
@@ -667,9 +667,9 @@
                 try {
                     const data = JSON.parse(event.data);
                     addEventToLog('EVENT', data);
-                    loadHistory(); // History neu laden
+                    loadHistory(); // Reload history
                 } catch (e) {
-                    console.error('Fehler beim Parsen von EVENT:', e);
+                    console.error('Error parsing EVENT:', e);
                 }
             });
 
@@ -682,7 +682,7 @@
         function addEventToLog(type, data) {
             const eventLog = document.getElementById('eventLog');
             
-            // Entferne Loading-Message
+            // Remove loading message
             if (eventLog.querySelector('.loading') && !eventLog.querySelector('.event-item')) {
                 eventLog.innerHTML = '';
             }
@@ -690,7 +690,7 @@
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
             
-            const timestamp = new Date().toLocaleTimeString('de-DE');
+            const timestamp = new Date().toLocaleTimeString('en-US');
             const eventType = type.toUpperCase();
             
             eventItem.innerHTML = `
@@ -699,21 +699,21 @@
                 <div>${JSON.stringify(data, null, 2)}</div>
             `;
 
-            // Live-Events immer oben einfügen
+            // Always insert live events at top
             eventLog.insertBefore(eventItem, eventLog.firstChild);
 
-            // Begrenze auf 100 Events im DOM (für Performance)
+            // Limit to 100 events in DOM (for performance)
             while (eventLog.children.length > 100) {
                 const lastChild = eventLog.lastChild;
                 if (lastChild && !lastChild.classList.contains('loading-more')) {
                     eventLog.removeChild(lastChild);
                 } else {
-                    break; // Nicht mehr Events entfernen, wenn Loading-Indikator erreicht
+                    break; // Don't remove more events if loading indicator is reached
                 }
             }
         }
 
-        // Cleanup beim Schließen
+        // Cleanup on close
         window.addEventListener('beforeunload', () => {
             if (eventSource) {
                 eventSource.close();

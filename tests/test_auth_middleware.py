@@ -1,4 +1,4 @@
-"""Unit-Tests für AuthMiddleware."""
+"""Unit tests for AuthMiddleware."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from homeconnect_coffee.middleware import AuthMiddleware
 
 @pytest.fixture
 def mock_request():
-    """Erstellt einen Mock-HTTP-Request."""
+    """Creates a mock HTTP request."""
     request = Mock()
     request.makefile.return_value = BytesIO()
     return request
@@ -22,13 +22,13 @@ def mock_request():
 
 @pytest.fixture
 def mock_server():
-    """Erstellt einen Mock-HTTP-Server."""
+    """Creates a mock HTTP server."""
     return Mock()
 
 
 @pytest.fixture
 def handler_kwargs(mock_request, mock_server):
-    """Erstellt Standard-Kwargs für Handler."""
+    """Creates standard kwargs for handlers."""
     return {
         "request": mock_request,
         "client_address": ("127.0.0.1", 12345),
@@ -38,16 +38,16 @@ def handler_kwargs(mock_request, mock_server):
 
 @pytest.fixture
 def error_handler():
-    """Erstellt einen ErrorHandler für Tests."""
+    """Creates an ErrorHandler for tests."""
     return ErrorHandler(enable_logging=False)
 
 
 @pytest.mark.unit
 class TestAuthMiddleware:
-    """Tests für AuthMiddleware Klasse."""
+    """Tests for AuthMiddleware class."""
 
     def test_check_auth_no_token_configured(self, handler_kwargs):
-        """Test check_auth() wenn kein Token konfiguriert."""
+        """Test check_auth() when no token is configured."""
         middleware = AuthMiddleware(api_token=None)
         router = BaseHandler(**handler_kwargs)
         router.path = "/test"
@@ -56,7 +56,7 @@ class TestAuthMiddleware:
         assert middleware.check_auth(router) is True
 
     def test_check_auth_valid_header(self, handler_kwargs):
-        """Test check_auth() mit gültigem Header-Token."""
+        """Test check_auth() with valid header token."""
         middleware = AuthMiddleware(api_token="test-token")
         router = BaseHandler(**handler_kwargs)
         router.path = "/test"
@@ -66,7 +66,7 @@ class TestAuthMiddleware:
         assert middleware.check_auth(router) is True
 
     def test_check_auth_invalid_header(self, handler_kwargs):
-        """Test check_auth() mit ungültigem Header-Token."""
+        """Test check_auth() with invalid header token."""
         middleware = AuthMiddleware(api_token="test-token")
         router = BaseHandler(**handler_kwargs)
         router.path = "/test"
@@ -76,7 +76,7 @@ class TestAuthMiddleware:
         assert middleware.check_auth(router) is False
 
     def test_check_auth_valid_query(self, handler_kwargs):
-        """Test check_auth() mit gültigem Query-Token."""
+        """Test check_auth() with valid query token."""
         middleware = AuthMiddleware(api_token="test-token")
         router = BaseHandler(**handler_kwargs)
         router.path = "/test?token=test-token"
@@ -86,7 +86,7 @@ class TestAuthMiddleware:
         assert middleware.check_auth(router) is True
 
     def test_check_auth_invalid_query(self, handler_kwargs):
-        """Test check_auth() mit ungültigem Query-Token."""
+        """Test check_auth() with invalid query token."""
         middleware = AuthMiddleware(api_token="test-token")
         router = BaseHandler(**handler_kwargs)
         router.path = "/test?token=wrong-token"
@@ -96,7 +96,7 @@ class TestAuthMiddleware:
         assert middleware.check_auth(router) is False
 
     def test_require_auth_sends_401(self, handler_kwargs, error_handler):
-        """Test require_auth() sendet 401 bei fehlender Auth."""
+        """Test require_auth() sends 401 on missing auth."""
         middleware = AuthMiddleware(api_token="test-token", error_handler=error_handler)
         router = BaseHandler(**handler_kwargs)
         router.path = "/test"
@@ -113,7 +113,7 @@ class TestAuthMiddleware:
         assert router.send_response.called  # Response wurde gesendet
 
     def test_require_auth_success(self, handler_kwargs, error_handler):
-        """Test require_auth() gibt True bei erfolgreicher Auth."""
+        """Test require_auth() returns True on successful auth."""
         middleware = AuthMiddleware(api_token="test-token", error_handler=error_handler)
         router = BaseHandler(**handler_kwargs)
         router.path = "/test?token=test-token"
@@ -125,7 +125,7 @@ class TestAuthMiddleware:
         assert result is True
 
     def test_middleware_as_callable(self, handler_kwargs, error_handler):
-        """Test Middleware kann als Callable verwendet werden."""
+        """Test middleware can be used as callable."""
         middleware = AuthMiddleware(api_token="test-token", error_handler=error_handler)
         router = BaseHandler(**handler_kwargs)
         router.path = "/test?token=test-token"
@@ -137,7 +137,7 @@ class TestAuthMiddleware:
         assert result is True
 
     def test_require_auth_no_error_handler(self, handler_kwargs):
-        """Test require_auth() ohne ErrorHandler verwendet Legacy-Methode."""
+        """Test require_auth() without ErrorHandler uses legacy method."""
         middleware = AuthMiddleware(api_token="test-token", error_handler=None)
         router = BaseHandler(**handler_kwargs)
         router.path = "/test"

@@ -1,4 +1,4 @@
-"""Unit-Tests für Services."""
+"""Unit tests for services."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from homeconnect_coffee.services import CoffeeService, HistoryService, StatusSer
 
 @pytest.mark.unit
 class TestCoffeeService:
-    """Tests für CoffeeService."""
+    """Tests for CoffeeService."""
 
     def test_wake_device_activates(self, test_config, valid_token_bundle, temp_token_file):
-        """Test wake_device() aktiviert das Gerät."""
+        """Test wake_device() activates the device."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -28,14 +28,14 @@ class TestCoffeeService:
             result = service.wake_device()
             
             assert result["status"] == "activated"
-            assert "Gerät wurde aktiviert" in result["message"]
+            assert "Device was activated" in result["message"]
             mock_set_setting.assert_called_once_with(
                 "BSH.Common.Setting.PowerState",
                 "BSH.Common.EnumType.PowerState.On"
             )
 
     def test_wake_device_already_on(self, test_config, valid_token_bundle, temp_token_file):
-        """Test wake_device() erkennt wenn Gerät bereits aktiv ist."""
+        """Test wake_device() detects when device is already active."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -46,10 +46,10 @@ class TestCoffeeService:
              patch.object(client, "get_status") as mock_get_status, \
              patch.object(client, "get_settings") as mock_get_settings:
             
-            # set_setting wirft RuntimeError (Gerät bereits aktiv)
+            # set_setting raises RuntimeError (device already active)
             mock_set_setting.side_effect = RuntimeError("Already on")
             
-            # get_status gibt OperationState != Inactive zurück
+            # get_status returns OperationState != Inactive
             mock_get_status.return_value = {
                 "data": {
                     "status": [
@@ -65,10 +65,10 @@ class TestCoffeeService:
             result = service.wake_device()
             
             assert result["status"] == "already_on"
-            assert "bereits aktiviert" in result["message"]
+            assert "already activated" in result["message"]
 
     def test_brew_espresso(self, test_config, valid_token_bundle, temp_token_file):
-        """Test brew_espresso() startet Espresso."""
+        """Test brew_espresso() starts espresso."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -80,7 +80,7 @@ class TestCoffeeService:
              patch.object(client, "select_program") as mock_select, \
              patch.object(client, "start_program") as mock_start:
             
-            # Mock Settings (Gerät ist bereits aktiv)
+            # Mock Settings (device is already active)
             mock_get_settings.return_value = {
                 "data": {
                     "settings": [
@@ -98,12 +98,12 @@ class TestCoffeeService:
             assert result["status"] == "started"
             assert "Espresso (50 ml)" in result["message"]
             
-            # Prüfe dass Programm ausgewählt und gestartet wurde
+            # Check that program was selected and started
             mock_select.assert_called_once()
             mock_start.assert_called_once()
 
     def test_brew_espresso_activates_device(self, test_config, valid_token_bundle, temp_token_file):
-        """Test brew_espresso() aktiviert Gerät falls nötig."""
+        """Test brew_espresso() activates device if necessary."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -116,7 +116,7 @@ class TestCoffeeService:
              patch.object(client, "select_program") as mock_select, \
              patch.object(client, "start_program") as mock_start:
             
-            # Mock Settings (Gerät ist im Standby)
+            # Mock Settings (device is in standby)
             mock_get_settings.return_value = {
                 "data": {
                     "settings": [
@@ -131,7 +131,7 @@ class TestCoffeeService:
             service = CoffeeService(client)
             service.brew_espresso(50)
             
-            # Prüfe dass Gerät aktiviert wurde
+            # Check that device was activated
             mock_set_setting.assert_called_once_with(
                 "BSH.Common.Setting.PowerState",
                 "BSH.Common.EnumType.PowerState.On"
@@ -140,10 +140,10 @@ class TestCoffeeService:
 
 @pytest.mark.unit
 class TestStatusService:
-    """Tests für StatusService."""
+    """Tests for StatusService."""
 
     def test_get_status(self, test_config, valid_token_bundle, temp_token_file):
-        """Test get_status() gibt Status zurück."""
+        """Test get_status() returns status."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -159,7 +159,7 @@ class TestStatusService:
             assert result == expected_status
 
     def test_get_extended_status(self, test_config, valid_token_bundle, temp_token_file):
-        """Test get_extended_status() gibt erweiterten Status zurück."""
+        """Test get_extended_status() returns extended status."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -189,7 +189,7 @@ class TestStatusService:
             assert "active" in result["programs"]
 
     def test_get_extended_status_handles_errors(self, test_config, valid_token_bundle, temp_token_file):
-        """Test get_extended_status() behandelt Fehler bei Programmen."""
+        """Test get_extended_status() handles errors for programs."""
         valid_token_bundle.save(temp_token_file)
         
         from homeconnect_coffee.client import HomeConnectClient
@@ -204,7 +204,7 @@ class TestStatusService:
             
             mock_status.return_value = {"data": {"status": []}}
             mock_settings.return_value = {"data": {"settings": []}}
-            # Programme können fehlschlagen
+            # Programs can fail
             mock_programs.side_effect = RuntimeError("Not ready")
             mock_selected.side_effect = RuntimeError("Not ready")
             mock_active.side_effect = RuntimeError("Not ready")
@@ -212,10 +212,10 @@ class TestStatusService:
             service = StatusService(client)
             result = service.get_extended_status()
             
-            # Sollte trotzdem Status und Settings zurückgeben
+            # Should still return status and settings
             assert "status" in result
             assert "settings" in result
-            # Programme sollten leere Dicts sein
+            # Programs should be empty dicts
             assert result["programs"]["available"] == {}
             assert result["programs"]["selected"] == {}
             assert result["programs"]["active"] == {}
@@ -223,10 +223,10 @@ class TestStatusService:
 
 @pytest.mark.unit
 class TestHistoryService:
-    """Tests für HistoryService."""
+    """Tests for HistoryService."""
 
     def test_get_history(self, temp_history_db):
-        """Test get_history() gibt History zurück."""
+        """Test get_history() returns history."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -239,7 +239,7 @@ class TestHistoryService:
         assert history[0]["type"] == "test_event"
 
     def test_get_history_with_filters(self, temp_history_db):
-        """Test get_history() mit Filtern."""
+        """Test get_history() with filters."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)

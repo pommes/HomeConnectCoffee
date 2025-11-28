@@ -1,187 +1,187 @@
-# Architektur-Dokumentation
+# Architecture Documentation
 
-## Übersicht
+## Overview
 
-Das HomeConnect Coffee Projekt ist eine Python-Anwendung zur Steuerung von HomeConnect-Kaffeemaschinen über die offizielle HomeConnect Cloud-API. Die Anwendung besteht aus einer CLI-API, einem HTTP-Server mit Dashboard-UI und Event-Streaming-Funktionalität.
+The HomeConnect Coffee project is a Python application for controlling HomeConnect coffee machines via the official HomeConnect Cloud API. The application consists of a CLI API, an HTTP server with dashboard UI, and event streaming functionality.
 
-## Komponenten-Übersicht
+## Component Overview
 
-### Core-Library (`src/homeconnect_coffee/`)
+### Core Library (`src/homeconnect_coffee/`)
 
 #### `client.py` - HomeConnect API Client
-- **Verantwortlichkeit:** Kommunikation mit der HomeConnect API
-- **Hauptfunktionen:**
-  - OAuth Token-Management (automatischer Refresh)
-  - API-Requests mit korrekten Headers
-  - Gerätestatus, Programme, Settings abrufen
-  - Programme starten/stoppen
-- **Thread-Safety:** Lock für Token-Refresh verhindert Race-Conditions
-- **API-Monitoring:** Jeder API-Call wird automatisch aufgezeichnet
+- **Responsibility:** Communication with the HomeConnect API
+- **Main Functions:**
+  - OAuth token management (automatic refresh)
+  - API requests with correct headers
+  - Retrieve device status, programs, settings
+  - Start/stop programs
+- **Thread Safety:** Lock for token refresh prevents race conditions
+- **API Monitoring:** Every API call is automatically recorded
 
 #### `auth.py` - OAuth Token Management
-- **Verantwortlichkeit:** OAuth 2.0 Authorization Code Flow
-- **Hauptfunktionen:**
-  - Token-Exchange (Code → Tokens)
-  - Token-Refresh
-  - Token-Persistierung in `tokens.json`
-- **TokenBundle:** Dataclass für Token-Verwaltung mit Expiry-Check
+- **Responsibility:** OAuth 2.0 Authorization Code Flow
+- **Main Functions:**
+  - Token exchange (Code → Tokens)
+  - Token refresh
+  - Token persistence in `tokens.json`
+- **TokenBundle:** Dataclass for token management with expiry check
 
-#### `config.py` - Konfigurations-Management
-- **Verantwortlichkeit:** Laden von Konfiguration aus `.env`
-- **HomeConnectConfig:** Immutable Dataclass für Konfiguration
-- **Umgebungsvariablen:**
+#### `config.py` - Configuration Management
+- **Responsibility:** Loading configuration from `.env`
+- **HomeConnectConfig:** Immutable dataclass for configuration
+- **Environment Variables:**
   - `HOME_CONNECT_CLIENT_ID`
   - `HOME_CONNECT_CLIENT_SECRET`
   - `HOME_CONNECT_REDIRECT_URI`
   - `HOME_CONNECT_HAID`
   - `HOME_CONNECT_SCOPE`
 
-#### `history.py` - Event-History (SQLite)
-- **Verantwortlichkeit:** Persistierung von Events in SQLite-Datenbank
+#### `history.py` - Event History (SQLite)
+- **Responsibility:** Persistence of events in SQLite database
 - **Schema:**
-  - `events` Tabelle: `id`, `timestamp`, `type`, `data` (JSON)
-  - Indizes auf `timestamp` und `type`
+  - `events` table: `id`, `timestamp`, `type`, `data` (JSON)
+  - Indexes on `timestamp` and `type`
 - **Features:**
-  - Automatische Migration von JSON zu SQLite
-  - Cursor-basierte Pagination
-  - Programm-Zählungen
-  - Tägliche Nutzungsstatistiken
+  - Automatic migration from JSON to SQLite
+  - Cursor-based pagination
+  - Program counts
+  - Daily usage statistics
 
-#### `api_monitor.py` - API-Call-Monitoring
-- **Verantwortlichkeit:** Tracking von API-Calls für Rate-Limit-Management
+#### `api_monitor.py` - API Call Monitoring
+- **Responsibility:** Tracking API calls for rate limit management
 - **Features:**
-  - Tägliche Statistiken mit automatischem Reset
-  - Warnungen bei 80%, 95%, 100% des Limits
-  - Persistierung in `api_stats.json`
+  - Daily statistics with automatic reset
+  - Warnings at 80%, 95%, 100% of limit
+  - Persistence in `api_stats.json`
 
-### HTTP-Server (`scripts/server.py`)
+### HTTP Server (`scripts/server.py`)
 
-#### Server-Architektur
-- **Größe:** ~180 Zeilen (deutlich reduziert durch Refactoring)
-- **Verantwortlichkeit:** Server-Initialisierung und Konfiguration
-- **Komponenten:**
-  - Initialisiert `HistoryManager`, `EventStreamManager`, `ErrorHandler`, `AuthMiddleware`
-  - Konfiguriert `RequestRouter` mit Middleware und Error-Handler
-  - Startet `ThreadingHTTPServer` für parallele Request-Verarbeitung
+#### Server Architecture
+- **Size:** ~180 lines (significantly reduced through refactoring)
+- **Responsibility:** Server initialization and configuration
+- **Components:**
+  - Initializes `HistoryManager`, `EventStreamManager`, `ErrorHandler`, `AuthMiddleware`
+  - Configures `RequestRouter` with middleware and error handler
+  - Starts `ThreadingHTTPServer` for parallel request processing
 
-#### Request-Routing (`handlers/router.py`)
+#### Request Routing (`handlers/router.py`)
 
-**`RequestRouter`** - Zentrale Request-Weiterleitung
-- Leitet Requests an spezialisierte Handler weiter
-- Verwendet `AuthMiddleware` für geschützte Endpoints
-- Routing-Logik:
+**`RequestRouter`** - Central Request Forwarding
+- Forwards requests to specialized handlers
+- Uses `AuthMiddleware` for protected endpoints
+- Routing logic:
   - `/wake`, `/brew` → `CoffeeHandler`
   - `/status`, `/api/status` → `StatusHandler`
   - `/api/history`, `/api/stats` → `HistoryHandler`
   - `/dashboard`, `/cert`, `/health`, `/events` → `DashboardHandler`
 
 **Endpoints:**
-- `GET /cert` - SSL-Zertifikat-Download (öffentlich)
-- `GET /health` - Health-Check (öffentlich)
-- `GET /dashboard` - Dashboard-UI (öffentlich)
-- `GET /wake` - Gerät aktivieren (authentifiziert)
-- `GET /status` - Gerätestatus (authentifiziert)
-- `GET /api/status` - Erweiterter Status (authentifiziert)
-- `GET /api/history` - Event-History (öffentlich, nur Lesen)
-- `GET /api/stats` - API-Statistiken (öffentlich, nur Lesen)
-- `GET /events` - Server-Sent Events Stream (öffentlich)
-- `POST /brew` - Espresso starten (authentifiziert)
+- `GET /cert` - SSL certificate download (public)
+- `GET /health` - Health check (public)
+- `GET /dashboard` - Dashboard UI (public)
+- `GET /wake` - Activate device (authenticated)
+- `GET /status` - Device status (authenticated)
+- `GET /api/status` - Extended status (authenticated)
+- `GET /api/history` - Event history (public, read-only)
+- `GET /api/stats` - API statistics (public, read-only)
+- `GET /events` - Server-Sent Events stream (public)
+- `POST /brew` - Start espresso (authenticated)
 
-#### Handler (`handlers/`)
+#### Handlers (`handlers/`)
 
-**`BaseHandler`** - Basis-Klasse für alle Handler
-- Gemeinsame Funktionalität: Authentifizierung, Error-Handling, JSON-Responses
-- Request-Parsing und Token-Maskierung für Logging
+**`BaseHandler`** - Base class for all handlers
+- Common functionality: authentication, error handling, JSON responses
+- Request parsing and token masking for logging
 
-**`CoffeeHandler`** - Coffee-Operationen (statische Methoden)
-- `handle_wake()` - Aktiviert das Gerät
-- `handle_brew()` - Startet einen Espresso
-- Verwendet `CoffeeService` für Business-Logic
+**`CoffeeHandler`** - Coffee operations (static methods)
+- `handle_wake()` - Activates the device
+- `handle_brew()` - Starts an espresso
+- Uses `CoffeeService` for business logic
 
-**`StatusHandler`** - Status-Endpoints (statische Methoden)
-- `handle_status()` - Gerätestatus
-- `handle_extended_status()` - Erweiterter Status mit Settings/Programmen
-- Verwendet `StatusService` für Business-Logic
+**`StatusHandler`** - Status endpoints (static methods)
+- `handle_status()` - Device status
+- `handle_extended_status()` - Extended status with settings/programs
+- Uses `StatusService` for business logic
 
-**`HistoryHandler`** - History-Endpoints (statische Methoden)
-- `handle_history()` - Event-History mit Pagination
-- `handle_api_stats()` - API-Call-Statistiken
-- Verwendet `HistoryService` für Datenabfragen
+**`HistoryHandler`** - History endpoints (static methods)
+- `handle_history()` - Event history with pagination
+- `handle_api_stats()` - API call statistics
+- Uses `HistoryService` for data queries
 
-**`DashboardHandler`** - Dashboard und öffentliche Endpoints (statische Methoden)
-- `handle_dashboard()` - Dashboard-HTML-Serving
-- `handle_cert_download()` - SSL-Zertifikat-Download
-- `handle_health()` - Health-Check
-- `handle_events_stream()` - Server-Sent Events Stream
+**`DashboardHandler`** - Dashboard and public endpoints (static methods)
+- `handle_dashboard()` - Dashboard HTML serving
+- `handle_cert_download()` - SSL certificate download
+- `handle_health()` - Health check
+- `handle_events_stream()` - Server-Sent Events stream
 
 #### Middleware (`middleware/`)
 
-**`AuthMiddleware`** - Authentifizierungs-Middleware
-- Token-basierte Authentifizierung (Bearer Header oder Query-Parameter)
-- `check_auth()` - Prüft Authentifizierung
-- `require_auth()` - Prüft und sendet 401 bei Fehler
-- Callable-Interface: `middleware(router)`
-- Isoliert Authentifizierungslogik für einfache Erweiterung (z.B. OAuth)
+**`AuthMiddleware`** - Authentication Middleware
+- Token-based authentication (Bearer header or query parameter)
+- `check_auth()` - Checks authentication
+- `require_auth()` - Checks and sends 401 on error
+- Callable interface: `middleware(router)`
+- Isolates authentication logic for easy extension (e.g., OAuth)
 
 #### Services (`services/`)
 
-**`CoffeeService`** - Business-Logic für Coffee-Operationen
-- `wake_device()` - Aktiviert das Gerät
-- `brew_espresso()` - Startet einen Espresso mit Füllmenge
-- Kapselt HomeConnect API-Aufrufe
+**`CoffeeService`** - Business logic for coffee operations
+- `wake_device()` - Activates the device
+- `brew_espresso()` - Starts an espresso with fill amount
+- Encapsulates HomeConnect API calls
 
-**`StatusService`** - Business-Logic für Status-Abfragen
-- `get_status()` - Gerätestatus
-- `get_extended_status()` - Erweiterter Status mit Settings/Programmen
-- Kapselt HomeConnect API-Aufrufe
+**`StatusService`** - Business logic for status queries
+- `get_status()` - Device status
+- `get_extended_status()` - Extended status with settings/programs
+- Encapsulates HomeConnect API calls
 
-**`HistoryService`** - Business-Logic für History-Abfragen
-- `get_history()` - Event-History mit Filterung und Pagination
-- `get_program_counts()` - Programm-Zählungen
-- `get_daily_usage()` - Tägliche Nutzungsstatistiken
-- Kapselt SQLite-Abfragen
+**`HistoryService`** - Business logic for history queries
+- `get_history()` - Event history with filtering and pagination
+- `get_program_counts()` - Program counts
+- `get_daily_usage()` - Daily usage statistics
+- Encapsulates SQLite queries
 
-**`EventStreamManager`** - Event-Stream-Management
-- Kapselt Event-Stream-Worker und History-Worker
-- Verwaltet verbundene SSE-Clients
-- `start()` / `stop()` - Startet/stoppt Worker-Threads
-- `add_client()` / `remove_client()` - Client-Verwaltung
-- `broadcast_event()` - Sendet Events an alle Clients
-- Implementiert exponentielles Backoff bei 429-Fehlern
-- Persistiert Events asynchron in SQLite
+**`EventStreamManager`** - Event Stream Management
+- Encapsulates event stream worker and history worker
+- Manages connected SSE clients
+- `start()` / `stop()` - Starts/stops worker threads
+- `add_client()` / `remove_client()` - Client management
+- `broadcast_event()` - Sends events to all clients
+- Implements exponential backoff on 429 errors
+- Persists events asynchronously in SQLite
 
 #### Error Handling (`errors.py`)
 
-**`ErrorHandler`** - Zentralisiertes Error-Handling
-- Klassifiziert Exceptions zu HTTP-Status-Codes
-- Strukturierte, farbige Logging-Ausgabe
-- Konsistente Error-Response-Formatierung
-- `ColoredFormatter` für Terminal-Ausgabe (orange für WARNING, rot für ERROR)
+**`ErrorHandler`** - Centralized Error Handling
+- Classifies exceptions to HTTP status codes
+- Structured, colored logging output
+- Consistent error response formatting
+- `ColoredFormatter` for terminal output (orange for WARNING, red for ERROR)
 
-### CLI-Scripts (`scripts/`)
+### CLI Scripts (`scripts/`)
 
-- `start_auth_flow.py` - OAuth-Authentifizierung
-- `brew_espresso.py` - Espresso starten
-- `device_status.py` - Gerätestatus anzeigen
-- `events.py` - Event-Stream überwachen
-- `wake_device.py` - Gerät aktivieren
-- `migrate_to_sqlite.py` - Manuelle Migration zu SQLite
-- `export_to_json.py` - Export von SQLite zu JSON
+- `start_auth_flow.py` - OAuth authentication
+- `brew_espresso.py` - Start espresso
+- `device_status.py` - Display device status
+- `events.py` - Monitor event stream
+- `wake_device.py` - Activate device
+- `migrate_to_sqlite.py` - Manual migration to SQLite
+- `export_to_json.py` - Export from SQLite to JSON
 
 ### Frontend (`scripts/dashboard.html`)
 
-- **Größe:** 726 Zeilen
-- **Technologien:** Vanilla JavaScript, Chart.js
+- **Size:** 726 lines
+- **Technologies:** Vanilla JavaScript, Chart.js
 - **Features:**
-  - Live-Status-Anzeige
-  - Event-Log mit Infinite Scroll
-  - Programm-Nutzung Chart
-  - Tägliche Nutzung Chart
-  - Server-Sent Events für Live-Updates
+  - Live status display
+  - Event log with infinite scroll
+  - Program usage chart
+  - Daily usage chart
+  - Server-Sent Events for live updates
 
-## Datenfluss
+## Data Flow
 
-### Event-Stream-Flow
+### Event Stream Flow
 
 ```
 HomeConnect API
@@ -203,16 +203,16 @@ SSE Clients
 Dashboard (Browser)
 ```
 
-### API-Request-Flow
+### API Request Flow
 
 ```
 HTTP Request
     ↓
 RequestRouter._route_request()
     ↓
-AuthMiddleware.require_auth() (wenn geschützt)
+AuthMiddleware.require_auth() (if protected)
     ↓
-Spezialisierter Handler (statische Methode)
+Specialized Handler (static method)
     ↓
 Service (CoffeeService, StatusService, etc.)
     ↓
@@ -223,90 +223,89 @@ HomeConnect API
 Response
 ```
 
-## Threading-Modell
+## Threading Model
 
-- **ThreadingHTTPServer:** Verarbeitet mehrere Requests gleichzeitig
-- **event_stream_worker:** Daemon-Thread, läuft kontinuierlich
-- **history_worker:** Daemon-Thread, verarbeitet Queue
-- **Token-Refresh:** Lock verhindert Race-Conditions
+- **ThreadingHTTPServer:** Processes multiple requests simultaneously
+- **event_stream_worker:** Daemon thread, runs continuously
+- **history_worker:** Daemon thread, processes queue
+- **Token Refresh:** Lock prevents race conditions
 
-## Architektur-Verbesserungen (Refactoring)
+## Architecture Improvements (Refactoring)
 
-### 1. Service-Layer eingeführt
-- Business-Logic in separate Service-Klassen ausgelagert
-- `CoffeeService`, `StatusService`, `HistoryService` kapseln API-Aufrufe
-- Handler verwenden Services statt direkter API-Calls
-- Services sind isoliert testbar
+### 1. Service Layer Introduced
+- Business logic moved to separate service classes
+- `CoffeeService`, `StatusService`, `HistoryService` encapsulate API calls
+- Handlers use services instead of direct API calls
+- Services are isolated and testable
 
-### 2. Handler aufgeteilt
-- Monolithischer `CoffeeHandler` (815 Zeilen) aufgeteilt in:
-  - `CoffeeHandler` - Coffee-Operationen (~90 Zeilen)
-  - `StatusHandler` - Status-Endpoints (~75 Zeilen)
-  - `HistoryHandler` - History-Endpoints (~105 Zeilen)
-  - `DashboardHandler` - Dashboard/öffentliche Endpoints (~177 Zeilen)
-  - `RequestRouter` - Request-Routing (~137 Zeilen)
-- Handler-Methoden sind statisch und nehmen Router als Parameter
-- Keine komplexe Initialisierung mehr nötig
+### 2. Handlers Split
+- Monolithic `CoffeeHandler` (815 lines) split into:
+  - `CoffeeHandler` - Coffee operations (~90 lines)
+  - `StatusHandler` - Status endpoints (~75 lines)
+  - `HistoryHandler` - History endpoints (~105 lines)
+  - `DashboardHandler` - Dashboard/public endpoints (~177 lines)
+  - `RequestRouter` - Request routing (~137 lines)
+- Handler methods are static and take router as parameter
+- No complex initialization needed anymore
 
-### 3. Event-Stream-Manager
-- Event-Stream-Logik in `EventStreamManager` Klasse gekapselt
-- Globale Variablen für Event-Stream entfernt
-- Thread-Management zentralisiert
-- Client-Verwaltung isoliert
+### 3. Event Stream Manager
+- Event stream logic encapsulated in `EventStreamManager` class
+- Removed global variables for event stream
+- Centralized thread management
+- Isolated client management
 
-### 4. Authentifizierung als Middleware
-- `AuthMiddleware` kapselt Authentifizierungslogik
-- Isoliert und einfach erweiterbar (z.B. OAuth, API-Keys)
-- Handler verwenden Middleware optional (Rückwärtskompatibilität)
+### 4. Authentication as Middleware
+- `AuthMiddleware` encapsulates authentication logic
+- Isolated and easily extensible (e.g., OAuth, API keys)
+- Handlers use middleware optionally (backward compatibility)
 
-### 5. Zentralisiertes Error-Handling
-- `ErrorHandler` für konsistente Error-Responses
-- Strukturiertes, farbiges Logging
-- Exception-Klassifizierung zu HTTP-Status-Codes
+### 5. Centralized Error Handling
+- `ErrorHandler` for consistent error responses
+- Structured, colored logging
+- Exception classification to HTTP status codes
 
-### 6. Testing-Infrastruktur
-- `pytest` für Unit-Tests
-- 109 Tests mit >66% Code-Coverage
-- Services, Handler, Middleware isoliert testbar
+### 6. Testing Infrastructure
+- `pytest` for unit tests
+- 109 tests with >66% code coverage
+- Services, handlers, middleware isolated and testable
 
-## Abhängigkeiten
+## Dependencies
 
-### Externe Bibliotheken
-- `requests` - HTTP-Requests
-- `sseclient` - Server-Sent Events Client
-- `python-dotenv` - .env Datei-Laden
-- `sqlite3` - SQLite-Datenbank (Standard-Library)
+### External Libraries
+- `requests` - HTTP requests
+- `sseclient` - Server-Sent Events client
+- `python-dotenv` - .env file loading
+- `sqlite3` - SQLite database (standard library)
 
-### Python-Version
+### Python Version
 - Python 3.11+
 
-## Performance-Überlegungen
+## Performance Considerations
 
-### Optimierungen
-- SQLite statt JSON für History (O(1) INSERT statt O(n))
-- Asynchrones Event-Speichern über Queue
-- ThreadingHTTPServer für parallele Requests
-- Cursor-basierte Pagination für große Event-Listen
-- Service-Layer ermöglicht Caching und Optimierungen
+### Optimizations
+- SQLite instead of JSON for history (O(1) INSERT instead of O(n))
+- Asynchronous event storage via queue
+- ThreadingHTTPServer for parallel requests
+- Cursor-based pagination for large event lists
+- Service layer enables caching and optimizations
 
-### Potenzielle Bottlenecks
-- Event-Stream-Worker läuft kontinuierlich für Event-Persistierung
-- Keine Connection-Pooling für HomeConnect API
-- SQLite kann bei sehr hoher Last limitiert sein (für Raspberry Pi Zero ausreichend)
+### Potential Bottlenecks
+- Event stream worker runs continuously for event persistence
+- No connection pooling for HomeConnect API
+- SQLite can be limited at very high load (sufficient for Raspberry Pi Zero)
 
-## Code-Statistiken
+## Code Statistics
 
-### Nach Refactoring
-- `server.py`: ~180 Zeilen (vorher: 815 Zeilen)
-- Handler gesamt: ~600 Zeilen (aufgeteilt in 5 Dateien)
-- Services: ~260 Zeilen (4 Service-Klassen)
-- Middleware: ~96 Zeilen (1 Middleware-Klasse)
-- Error-Handling: ~338 Zeilen (1 ErrorHandler-Klasse)
-- Tests: 109 Unit-Tests mit >66% Code-Coverage
+### After Refactoring
+- `server.py`: ~180 lines (previously: 815 lines)
+- Handlers total: ~600 lines (split into 5 files)
+- Services: ~260 lines (4 service classes)
+- Middleware: ~96 lines (1 middleware class)
+- Error Handling: ~338 lines (1 ErrorHandler class)
+- Tests: 109 unit tests with >66% code coverage
 
-### Verbesserungen
-- **Single Responsibility**: Jede Klasse hat eine klare Verantwortlichkeit
-- **Testbarkeit**: Alle Komponenten isoliert testbar
-- **Wartbarkeit**: Kleinere, fokussierte Dateien
-- **Erweiterbarkeit**: Middleware-Pattern ermöglicht einfache Erweiterungen
-
+### Improvements
+- **Single Responsibility:** Each class has a clear responsibility
+- **Testability:** All components isolated and testable
+- **Maintainability:** Smaller, focused files
+- **Extensibility:** Middleware pattern enables simple extensions

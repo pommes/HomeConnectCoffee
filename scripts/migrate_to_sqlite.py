@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Migriert Events von history.json zu history.db."""
+"""Migrates events from history.json to history.db."""
 
 from __future__ import annotations
 
@@ -9,43 +9,43 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-# PYTHONPATH anpassen, damit homeconnect_coffee gefunden wird
+# Adjust PYTHONPATH so homeconnect_coffee can be found
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def migrate_json_to_sqlite(json_path: Path, db_path: Path) -> int:
-    """Migriert Events von JSON zu SQLite.
+    """Migrates events from JSON to SQLite.
     
     Returns:
-        Anzahl der migrierten Events
+        Number of migrated events
     """
     if not json_path.exists():
-        print(f"Fehler: {json_path} existiert nicht.")
+        print(f"Error: {json_path} does not exist.")
         return 0
     
-    # Lade Events aus JSON
+    # Load events from JSON
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             json_events = json.load(f)
     except json.JSONDecodeError as e:
-        print(f"Fehler: JSON-Datei ist beschädigt: {e}")
+        print(f"Error: JSON file is corrupted: {e}")
         return 0
     except FileNotFoundError:
-        print(f"Fehler: {json_path} nicht gefunden.")
+        print(f"Error: {json_path} not found.")
         return 0
     
     if not json_events:
-        print("Keine Events in JSON-Datei gefunden.")
+        print("No events found in JSON file.")
         return 0
     
-    # Erstelle SQLite-Datenbank
+    # Create SQLite database
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     
     try:
         cursor = conn.cursor()
         
-        # Erstelle Schema
+        # Create schema
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,18 +61,18 @@ def migrate_json_to_sqlite(json_path: Path, db_path: Path) -> int:
             CREATE INDEX IF NOT EXISTS idx_type ON events(type)
         """)
         
-        # Prüfe ob bereits Events vorhanden sind
+        # Check if events already exist
         cursor.execute("SELECT COUNT(*) FROM events")
         existing_count = cursor.fetchone()[0]
         
         if existing_count > 0:
-            print(f"WARNUNG: Datenbank enthält bereits {existing_count} Events.")
-            response = input("Trotzdem migrieren? (j/N): ")
-            if response.lower() != "j":
-                print("Migration abgebrochen.")
+            print(f"WARNING: Database already contains {existing_count} events.")
+            response = input("Migrate anyway? (y/N): ")
+            if response.lower() != "y":
+                print("Migration cancelled.")
                 return 0
         
-        # Importiere Events
+        # Import events
         imported = 0
         skipped = 0
         
@@ -89,15 +89,15 @@ def migrate_json_to_sqlite(json_path: Path, db_path: Path) -> int:
                 )
                 imported += 1
             except Exception as e:
-                print(f"WARNUNG: Fehler beim Importieren eines Events: {e}")
+                print(f"WARNING: Error importing an event: {e}")
                 skipped += 1
                 continue
         
         conn.commit()
         
-        print(f"✓ {imported} Events erfolgreich migriert")
+        print(f"✓ {imported} events successfully migrated")
         if skipped > 0:
-            print(f"  {skipped} Events übersprungen (Fehler)")
+            print(f"  {skipped} events skipped (errors)")
         
         return imported
     finally:
@@ -105,23 +105,23 @@ def migrate_json_to_sqlite(json_path: Path, db_path: Path) -> int:
 
 
 def main() -> None:
-    """Hauptfunktion für manuelle Migration."""
+    """Main function for manual migration."""
     project_root = Path(__file__).parent.parent
     json_path = project_root / "history.json"
     db_path = project_root / "history.db"
     
-    print(f"Migration von {json_path.name} nach {db_path.name}...")
+    print(f"Migration from {json_path.name} to {db_path.name}...")
     print()
     
     imported = migrate_json_to_sqlite(json_path, db_path)
     
     if imported > 0:
         print()
-        print("Migration abgeschlossen!")
-        print(f"  SQLite-Datenbank: {db_path}")
-        print(f"  Original-JSON: {json_path}")
+        print("Migration completed!")
+        print(f"  SQLite database: {db_path}")
+        print(f"  Original JSON: {json_path}")
         print()
-        print("Tipp: Du kannst die JSON-Datei als Backup behalten oder löschen.")
+        print("Tip: You can keep the JSON file as backup or delete it.")
 
 
 if __name__ == "__main__":

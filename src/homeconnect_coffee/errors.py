@@ -1,4 +1,4 @@
-"""Error-Handling für HomeConnect Coffee."""
+"""Error handling for HomeConnect Coffee."""
 
 from __future__ import annotations
 
@@ -9,44 +9,44 @@ import traceback
 from enum import IntEnum
 from typing import Any, Dict, Optional
 
-# Logger für Error-Handling
+# Logger for error handling
 logger = logging.getLogger(__name__)
 
 
 class ColoredFormatter(logging.Formatter):
-    """Logging-Formatter mit Farben für WARNING (orange) und ERROR (rot).
+    """Logging formatter with colors for WARNING (orange) and ERROR (red).
     
-    Farben werden nur verwendet, wenn:
-    - Das Terminal Farben unterstützt (isatty())
-    - Die Umgebungsvariable NO_COLOR nicht gesetzt ist
+    Colors are only used when:
+    - The terminal supports colors (isatty())
+    - The NO_COLOR environment variable is not set
     """
     
-    # ANSI-Escape-Codes für Farben
+    # ANSI escape codes for colors
     RESET = '\033[0m'
-    ORANGE = '\033[38;5;208m'  # Orange für WARNING
-    RED = '\033[31m'  # Rot für ERROR
+    ORANGE = '\033[38;5;208m'  # Orange for WARNING
+    RED = '\033[31m'  # Red for ERROR
     BOLD = '\033[1m'
     
     def __init__(self, *args, **kwargs):
-        """Initialisiert den Formatter."""
+        """Initializes the formatter."""
         super().__init__(*args, **kwargs)
         self._use_colors = self._should_use_colors()
     
     def _should_use_colors(self) -> bool:
-        """Prüft, ob Farben verwendet werden sollen.
+        """Checks if colors should be used.
         
         Returns:
-            True wenn Farben verwendet werden sollen, False sonst
+            True if colors should be used, False otherwise
         """
-        # Prüfe NO_COLOR Umgebungsvariable (Standard für Terminal-Apps)
+        # Check NO_COLOR environment variable (standard for terminal apps)
         if os.getenv("NO_COLOR") is not None:
             return False
         
-        # Prüfe ob stdout ein TTY ist (Terminal mit Farbunterstützung)
+        # Check if stdout is a TTY (terminal with color support)
         if not sys.stdout.isatty():
             return False
         
-        # Prüfe ob TERM gesetzt ist und nicht "dumb" ist
+        # Check if TERM is set and not "dumb"
         term = os.getenv("TERM", "")
         if term == "dumb":
             return False
@@ -54,24 +54,24 @@ class ColoredFormatter(logging.Formatter):
         return True
     
     def format(self, record: logging.LogRecord) -> str:
-        """Formatiert einen Log-Record mit optionalen Farben."""
-        # Erstelle Basis-Format
+        """Formats a log record with optional colors."""
+        # Create base format
         log_message = super().format(record)
         
-        # Füge Farben hinzu, wenn aktiviert
+        # Add colors if enabled
         if self._use_colors:
             if record.levelno == logging.WARNING:
                 # WARNING: Orange
                 log_message = f"{self.ORANGE}{log_message}{self.RESET}"
             elif record.levelno >= logging.ERROR:
-                # ERROR und CRITICAL: Rot und fett
+                # ERROR and CRITICAL: Red and bold
                 log_message = f"{self.RED}{log_message}{self.RESET}"
         
         return log_message
 
 
 class ErrorCode(IntEnum):
-    """HTTP-Status-Codes und interne Error-Codes."""
+    """HTTP status codes and internal error codes."""
     
     # HTTP Status Codes
     BAD_REQUEST = 400
@@ -80,7 +80,7 @@ class ErrorCode(IntEnum):
     INTERNAL_SERVER_ERROR = 500
     GATEWAY_TIMEOUT = 504
     
-    # Interne Error-Codes (für Logging)
+    # Internal error codes (for logging)
     CONFIG_ERROR = 1000
     CLIENT_ERROR = 1001
     API_ERROR = 1002
@@ -89,29 +89,29 @@ class ErrorCode(IntEnum):
 
 
 class ErrorHandler:
-    """Zentrale Error-Handling-Klasse."""
+    """Central error handling class."""
     
     def __init__(self, enable_logging: bool = True, log_sensitive: bool = False) -> None:
-        """Initialisiert den ErrorHandler.
+        """Initializes the ErrorHandler.
         
         Args:
-            enable_logging: Ob Logging aktiviert ist
-            log_sensitive: Ob sensible Informationen geloggt werden sollen
+            enable_logging: Whether logging is enabled
+            log_sensitive: Whether sensitive information should be logged
         """
         self.enable_logging = enable_logging
         self.log_sensitive = log_sensitive
         
-        # Logger konfigurieren
+        # Configure logger
         if enable_logging:
-            # Erstelle Root-Logger Handler mit Farben
+            # Create root logger handler with colors
             root_logger = logging.getLogger()
             root_logger.setLevel(logging.INFO)
             
-            # Entferne existierende Handler (falls basicConfig bereits aufgerufen wurde)
+            # Remove existing handlers (if basicConfig was already called)
             if root_logger.handlers:
                 root_logger.handlers.clear()
             
-            # Erstelle Console-Handler mit Farb-Formatter
+            # Create console handler with color formatter
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setLevel(logging.INFO)
             
@@ -130,16 +130,16 @@ class ErrorHandler:
         error_code: Optional[int] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Formatiert eine Error-Response im konsistenten Format.
+        """Formats an error response in a consistent format.
         
         Args:
-            code: HTTP-Status-Code
-            message: Fehlermeldung für den Client
-            error_code: Optionaler interner Error-Code
-            details: Optionale zusätzliche Details
+            code: HTTP status code
+            message: Error message for the client
+            error_code: Optional internal error code
+            details: Optional additional details
             
         Returns:
-            Dict mit Error-Response
+            Dict with error response
         """
         response: Dict[str, Any] = {
             "error": message,
@@ -158,31 +158,31 @@ class ErrorHandler:
         self,
         exception: Exception,
         default_code: int = ErrorCode.INTERNAL_SERVER_ERROR,
-        default_message: str = "Ein Fehler ist aufgetreten",
+        default_message: str = "An error occurred",
         include_traceback: bool = False,
     ) -> tuple[int, Dict[str, Any]]:
-        """Behandelt eine Exception und gibt HTTP-Status-Code und Response zurück.
+        """Handles an exception and returns HTTP status code and response.
         
         Args:
-            exception: Die aufgetretene Exception
-            default_code: Standard-HTTP-Status-Code
-            default_message: Standard-Fehlermeldung
-            include_traceback: Ob Stack-Trace in Response enthalten sein soll (nur für Debug)
+            exception: The exception that occurred
+            default_code: Default HTTP status code
+            default_message: Default error message
+            include_traceback: Whether stack trace should be included in response (debug only)
             
         Returns:
-            Tuple von (HTTP-Status-Code, Error-Response-Dict)
+            Tuple of (HTTP status code, error response dict)
         """
-        # Bestimme Error-Code und Message basierend auf Exception-Typ
+        # Determine error code and message based on exception type
         code, message, error_code = self._classify_error(exception, default_code, default_message)
         
-        # Logge den Fehler
+        # Log the error
         if self.enable_logging:
             self._log_error(exception, code, message, error_code)
         
-        # Erstelle Response
+        # Create response
         response = self.format_error_response(code, message, error_code)
         
-        # Füge Stack-Trace hinzu, wenn gewünscht (nur für Debug)
+        # Add stack trace if requested (debug only)
         if include_traceback and self.log_sensitive:
             response["traceback"] = traceback.format_exc()
         
@@ -194,15 +194,15 @@ class ErrorHandler:
         default_code: int,
         default_message: str,
     ) -> tuple[int, str, Optional[int]]:
-        """Klassifiziert eine Exception und gibt Code, Message und Error-Code zurück.
+        """Classifies an exception and returns code, message and error code.
         
         Args:
-            exception: Die Exception
-            default_code: Standard-HTTP-Status-Code
-            default_message: Standard-Fehlermeldung
+            exception: The exception
+            default_code: Default HTTP status code
+            default_message: Default error message
             
         Returns:
-            Tuple von (HTTP-Status-Code, Message, Error-Code)
+            Tuple of (HTTP status code, message, error code)
         """
         exception_type = type(exception).__name__
         exception_message = str(exception)
@@ -211,7 +211,7 @@ class ErrorHandler:
         if isinstance(exception, ValueError):
             return (
                 ErrorCode.BAD_REQUEST,
-                f"Ungültiger Parameter: {exception_message}",
+                f"Invalid parameter: {exception_message}",
                 ErrorCode.VALIDATION_ERROR,
             )
         
@@ -227,19 +227,19 @@ class ErrorHandler:
         if exception_type == "Timeout":
             return (
                 ErrorCode.GATEWAY_TIMEOUT,
-                "API-Anfrage hat das Timeout überschritten",
+                "API request timed out",
                 ErrorCode.API_ERROR,
             )
         
-        # RuntimeError mit 429-Informationen (von client.py bei Rate-Limit)
+        # RuntimeError with 429 information (from client.py on rate limit)
         if exception_type == "RuntimeError" and "(429)" in exception_message:
             return (
                 ErrorCode.GATEWAY_TIMEOUT,
-                "Rate-Limit erreicht. Bitte später erneut versuchen.",
+                "Rate limit reached. Please try again later.",
                 ErrorCode.API_ERROR,
             )
         
-        # requests.exceptions.HTTPError -> abhängig vom Status-Code
+        # requests.exceptions.HTTPError -> depends on status code
         if exception_type == "HTTPError" and hasattr(exception, "response"):
             response = exception.response
             if response is not None:
@@ -253,18 +253,18 @@ class ErrorHandler:
                 elif status_code == 404:
                     return (
                         ErrorCode.NOT_FOUND,
-                        "Ressource nicht gefunden",
+                        "Resource not found",
                         ErrorCode.API_ERROR,
                     )
                 elif status_code == 429:
                     return (
                         ErrorCode.GATEWAY_TIMEOUT,
-                        "Rate-Limit erreicht. Bitte später erneut versuchen.",
+                        "Rate limit reached. Please try again later.",
                         ErrorCode.API_ERROR,
                     )
         
-        # Standard: 500 Internal Server Error
-        # Message sollte keine sensiblen Informationen enthalten
+        # Default: 500 Internal Server Error
+        # Message should not contain sensitive information
         safe_message = default_message
         if self.log_sensitive:
             safe_message = f"{default_message}: {exception_message}"
@@ -282,18 +282,18 @@ class ErrorHandler:
         message: str,
         error_code: Optional[int],
     ) -> None:
-        """Loggt einen Fehler.
+        """Logs an error.
         
         Args:
-            exception: Die Exception
-            code: HTTP-Status-Code
-            message: Fehlermeldung
-            error_code: Optionaler Error-Code
+            exception: The exception
+            code: HTTP status code
+            message: Error message
+            error_code: Optional error code
         """
         exception_type = type(exception).__name__
         exception_message = str(exception)
         
-        # Log-Level basierend auf HTTP-Status-Code
+        # Log level based on HTTP status code
         if code >= 500:
             log_level = logging.ERROR
         elif code >= 400:
@@ -301,7 +301,7 @@ class ErrorHandler:
         else:
             log_level = logging.INFO
         
-        # Logge mit vollständigen Details (nur im Log, nicht in Response)
+        # Log with full details (only in log, not in response)
         if self.log_sensitive:
             logger.log(
                 log_level,
@@ -320,15 +320,15 @@ class ErrorHandler:
         message: str,
         error_code: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Erstellt eine Error-Response (für manuelle Fehler).
+        """Creates an error response (for manual errors).
         
         Args:
-            code: HTTP-Status-Code
-            message: Fehlermeldung
-            error_code: Optionaler Error-Code
+            code: HTTP status code
+            message: Error message
+            error_code: Optional error code
             
         Returns:
-            Error-Response-Dict
+            Error response dict
         """
         if self.enable_logging:
             logger.warning(f"Error {code} ({error_code}): {message}")

@@ -1,4 +1,4 @@
-"""Handler für Status-Endpoints."""
+"""Handler for status endpoints."""
 
 from __future__ import annotations
 
@@ -14,21 +14,21 @@ if TYPE_CHECKING:
 
 
 class StatusHandler:
-    """Handler für Status-Endpoints: /status und /api/status.
+    """Handler for status endpoints: /status and /api/status.
     
-    Handler-Methoden sind statisch und nehmen den Router als Parameter.
+    Handler methods are static and take the router as a parameter.
     """
 
     @staticmethod
     def handle_status(router: "BaseHandler", auth_middleware: "AuthMiddleware | None" = None) -> None:
-        """Gibt den Gerätestatus zurück.
+        """Returns the device status.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            auth_middleware: Optional AuthMiddleware für Authentifizierung.
-                           Wenn None, wird router._require_auth() verwendet (Legacy).
+            router: The router (BaseHandler instance) with request context
+            auth_middleware: Optional AuthMiddleware for authentication.
+                           If None, router._require_auth() is used (legacy).
         """
-        # Verwende Middleware falls vorhanden, sonst Legacy-Methode
+        # Use middleware if present, otherwise legacy method
         if auth_middleware:
             if not auth_middleware.require_auth(router):
                 return
@@ -42,18 +42,18 @@ class StatusHandler:
             status = status_service.get_status()
             router._send_json(status, status_code=200)
         except Exception as e:
-            StatusHandler._handle_error(router, e, "Fehler beim Abrufen des Status")
+            StatusHandler._handle_error(router, e, "Error retrieving status")
 
     @staticmethod
     def handle_extended_status(router: "BaseHandler", auth_middleware: "AuthMiddleware | None" = None) -> None:
-        """Gibt erweiterten Status mit Settings und Programmen zurück.
+        """Returns extended status with settings and programs.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            auth_middleware: Optional AuthMiddleware für Authentifizierung.
-                           Wenn None, wird router._require_auth() verwendet (Legacy).
+            router: The router (BaseHandler instance) with request context
+            auth_middleware: Optional AuthMiddleware for authentication.
+                           If None, router._require_auth() is used (legacy).
         """
-        # Verwende Middleware falls vorhanden, sonst Legacy-Methode
+        # Use middleware if present, otherwise legacy method
         if auth_middleware:
             if not auth_middleware.require_auth(router):
                 return
@@ -67,16 +67,16 @@ class StatusHandler:
             extended_status = status_service.get_extended_status()
             router._send_json(extended_status, status_code=200)
         except Exception as e:
-            StatusHandler._handle_error(router, e, "Fehler beim Abrufen des Status")
+            StatusHandler._handle_error(router, e, "Error retrieving status")
 
     @staticmethod
     def _handle_error(router: "BaseHandler", exception: Exception, default_message: str) -> None:
-        """Behandelt einen Fehler und sendet entsprechende Response.
+        """Handles an error and sends appropriate response.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            exception: Die aufgetretene Exception
-            default_message: Standard-Fehlermeldung
+            router: The router (BaseHandler instance) with request context
+            exception: The exception that occurred
+            default_message: Default error message
         """
         if router.error_handler:
             code, response = router.error_handler.handle_error(exception, default_message=default_message)

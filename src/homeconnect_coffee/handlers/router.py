@@ -1,4 +1,4 @@
-"""Router für Request-Routing zu spezialisierten Handlern."""
+"""Router for request routing to specialized handlers."""
 
 from __future__ import annotations
 
@@ -14,22 +14,22 @@ from .status_handler import StatusHandler
 
 
 class RequestRouter(BaseHandler):
-    """Router, der Requests an spezialisierte Handler weiterleitet."""
+    """Router that forwards requests to specialized handlers."""
 
     enable_logging = True
     api_token: str | None = None
     error_handler = None
 
     def handle_one_request(self):
-        """Überschreibt handle_one_request, um BrokenPipeError abzufangen."""
+        """Overrides handle_one_request to catch BrokenPipeError."""
         try:
             super().handle_one_request()
         except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen - normal, nicht loggen
+            # Client closed connection - normal, don't log
             pass
 
     def log_request(self, code="-", size="-"):
-        """Loggt Requests wenn Logging aktiviert ist."""
+        """Logs requests when logging is enabled."""
         if self.enable_logging:
             client_ip = self.client_address[0]
             method = self.command
@@ -39,7 +39,7 @@ class RequestRouter(BaseHandler):
             logger.info(f"{client_ip} - {method} {path} - {code}")
     
     def _mask_token_in_path(self, path: str) -> str:
-        """Maskiert Token-Parameter im Pfad für das Logging."""
+        """Masks token parameters in the path for logging."""
         if "token=" not in path:
             return path
         
@@ -47,7 +47,7 @@ class RequestRouter(BaseHandler):
         query_params = parse_qs(parsed.query)
         
         if "token" in query_params:
-            # Maskiere Token
+            # Mask token
             query_params["token"] = ["__MASKED__"]
             from urllib.parse import urlencode
             new_query = urlencode(query_params, doseq=True)
@@ -56,33 +56,33 @@ class RequestRouter(BaseHandler):
         return path
 
     def log_message(self, format, *args):
-        """Unterdrückt Standard-Logging-Nachrichten."""
+        """Suppresses standard logging messages."""
         pass
 
     def do_GET(self):
-        """Leitet GET-Requests an spezialisierte Handler weiter."""
+        """Forwards GET requests to specialized handlers."""
         self._route_request()
 
     def do_POST(self):
-        """Leitet POST-Requests an spezialisierte Handler weiter."""
+        """Forwards POST requests to specialized handlers."""
         self._route_request()
 
     def _route_request(self) -> None:
-        """Leitet Requests an den passenden Handler weiter.
+        """Forwards requests to the appropriate handler.
         
-        Routing-Logik:
+        Routing logic:
         - /wake, /brew -> CoffeeHandler
         - /status, /api/status -> StatusHandler
         - /api/history, /api/stats -> HistoryHandler
         - /dashboard, /cert, /health, /events -> DashboardHandler
         
-        Handler-Methoden sind statisch und nehmen den Router (self) als Parameter.
+        Handler methods are static and take the router (self) as a parameter.
         """
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         query_params = parse_qs(parsed_path.query)
 
-        # Öffentliche Endpoints (keine Authentifizierung)
+        # Public endpoints (no authentication)
         if path == "/dashboard":
             DashboardHandler.handle_dashboard(self)
             return
@@ -96,7 +96,7 @@ class RequestRouter(BaseHandler):
             DashboardHandler.handle_events_stream(self)
             return
 
-        # History-Endpoints (öffentlich, nur Lesen)
+        # History endpoints (public, read-only)
         if path == "/api/history":
             HistoryHandler.handle_history(self, query_params)
             return
@@ -104,18 +104,18 @@ class RequestRouter(BaseHandler):
             HistoryHandler.handle_api_stats(self)
             return
 
-        # Coffee-Endpoints (benötigen Authentifizierung)
+        # Coffee endpoints (require authentication)
         if path == "/wake":
             CoffeeHandler.handle_wake(self, self.auth_middleware)
             return
         elif path == "/brew":
             if self.command == "GET":
-                # Brew als GET mit Query-Parameter fill_ml
+                # Brew as GET with query parameter fill_ml
                 fill_ml_param = query_params.get("fill_ml", [None])[0]
                 fill_ml = int(fill_ml_param) if fill_ml_param and fill_ml_param.isdigit() else 50
                 CoffeeHandler.handle_brew(self, fill_ml, self.auth_middleware)
             elif self.command == "POST":
-                # Brew als POST mit JSON-Body
+                # Brew as POST with JSON body
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(content_length).decode("utf-8")
                 data = json.loads(body) if body else {}
@@ -123,7 +123,7 @@ class RequestRouter(BaseHandler):
                 CoffeeHandler.handle_brew(self, fill_ml, self.auth_middleware)
             return
 
-        # Status-Endpoints (benötigen Authentifizierung)
+        # Status endpoints (require authentication)
         if path == "/status":
             StatusHandler.handle_status(self, self.auth_middleware)
             return

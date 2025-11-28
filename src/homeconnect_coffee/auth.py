@@ -89,7 +89,7 @@ def _token_request(config: HomeConnectConfig, data: Dict[str, str]) -> TokenBund
             error_detail = error_json.get("error_description", error_json.get("error", error_detail))
         except Exception:
             pass
-        raise RuntimeError(f"Token-Anfrage fehlgeschlagen ({response.status_code}): {error_detail}")
+        raise RuntimeError(f"Token request failed ({response.status_code}): {error_detail}")
     response.raise_for_status()
     return TokenBundle.from_response(response.json())
 

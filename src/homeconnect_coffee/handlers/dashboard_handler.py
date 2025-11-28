@@ -1,4 +1,4 @@
-"""Handler für Dashboard und öffentliche Endpoints."""
+"""Handler for dashboard and public endpoints."""
 
 from __future__ import annotations
 
@@ -14,36 +14,36 @@ from ..services import EventStreamManager
 if TYPE_CHECKING:
     from .base_handler import BaseHandler
 
-# Wird von server.py gesetzt
+# Set by server.py
 event_stream_manager: EventStreamManager | None = None
 
 
 class DashboardHandler:
-    """Handler für Dashboard und öffentliche Endpoints: /dashboard, /cert, /health, /events.
+    """Handler for dashboard and public endpoints: /dashboard, /cert, /health, /events.
     
-    Handler-Methoden sind statisch und nehmen den Router als Parameter.
+    Handler methods are static and take the router as a parameter.
     """
 
     @staticmethod
     def handle_dashboard(router: "BaseHandler") -> None:
-        """Liefert die Dashboard-HTML-Seite.
+        """Serves the dashboard HTML page.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
         """
-        # Dashboard-Pfad relativ zu scripts/
+        # Dashboard path relative to scripts/
         dashboard_path = Path(__file__).parent.parent.parent.parent / "scripts" / "dashboard.html"
 
         if not dashboard_path.exists():
             if router.error_handler:
                 response = router.error_handler.create_error_response(
                     ErrorCode.NOT_FOUND,
-                    "Dashboard nicht gefunden",
+                    "Dashboard not found",
                     ErrorCode.FILE_ERROR,
                 )
                 router._send_error_response(ErrorCode.NOT_FOUND, response)
             else:
-                router._send_error(404, "Dashboard nicht gefunden")
+                router._send_error(404, "Dashboard not found")
             return
 
         try:
@@ -55,17 +55,17 @@ class DashboardHandler:
             router.wfile.write(dashboard_html.encode("utf-8"))
         except Exception as e:
             if router.error_handler:
-                code, response = router.error_handler.handle_error(e, default_message="Fehler beim Lesen des Dashboards")
+                code, response = router.error_handler.handle_error(e, default_message="Error reading dashboard")
                 router._send_error_response(code, response)
             else:
-                router._send_error(500, f"Fehler beim Lesen des Dashboards: {str(e)}")
+                router._send_error(500, f"Error reading dashboard: {str(e)}")
 
     @staticmethod
     def handle_cert_download(router: "BaseHandler") -> None:
-        """Stellt das SSL-Zertifikat zum Download bereit.
+        """Serves the SSL certificate for download.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
         """
         cert_path = Path(__file__).parent.parent.parent.parent / "certs" / "server.crt"
 
@@ -73,12 +73,12 @@ class DashboardHandler:
             if router.error_handler:
                 response = router.error_handler.create_error_response(
                     ErrorCode.NOT_FOUND,
-                    "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.",
+                    "Certificate not found. Please run 'make cert' first.",
                     ErrorCode.FILE_ERROR,
                 )
                 router._send_error_response(ErrorCode.NOT_FOUND, response)
             else:
-                router._send_error(404, "Zertifikat nicht gefunden. Bitte erst 'make cert' ausführen.")
+                router._send_error(404, "Certificate not found. Please run 'make cert' first.")
             return
 
         try:
@@ -92,29 +92,29 @@ class DashboardHandler:
             router.wfile.write(cert_data)
         except Exception as e:
             if router.error_handler:
-                code, response = router.error_handler.handle_error(e, default_message="Fehler beim Lesen des Zertifikats")
+                code, response = router.error_handler.handle_error(e, default_message="Error reading certificate")
                 router._send_error_response(code, response)
             else:
-                router._send_error(500, f"Fehler beim Lesen des Zertifikats: {str(e)}")
+                router._send_error(500, f"Error reading certificate: {str(e)}")
 
     @staticmethod
     def handle_health(router: "BaseHandler") -> None:
-        """Gibt Health-Check-Status zurück.
+        """Returns health check status.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
         """
         router._send_json({"status": "ok"}, status_code=200)
 
     @staticmethod
     def handle_events_stream(router: "BaseHandler") -> None:
-        """Handhabt Server-Sent Events Stream für Live-Updates.
+        """Handles Server-Sent Events stream for live updates.
         
-        Erstellt KEINEN Client, um Blockierungen zu vermeiden.
-        Der Event-Stream-Worker liefert die Events im Hintergrund.
+        Does NOT create a client to avoid blocking.
+        The event stream worker delivers events in the background.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
         """
         global event_stream_manager
         
@@ -122,15 +122,15 @@ class DashboardHandler:
             if router.error_handler:
                 response = router.error_handler.create_error_response(
                     ErrorCode.INTERNAL_SERVER_ERROR,
-                    "Event-Stream-Manager nicht initialisiert",
+                    "Event stream manager not initialized",
                     ErrorCode.INTERNAL_SERVER_ERROR,
                 )
                 router._send_error_response(ErrorCode.INTERNAL_SERVER_ERROR, response)
             else:
-                router._send_error(500, "Event-Stream-Manager nicht initialisiert")
+                router._send_error(500, "Event stream manager not initialized")
             return
 
-        # SSE-Header senden
+        # Send SSE headers
         router.send_response(200)
         router.send_header("Content-Type", "text/event-stream")
         router.send_header("Cache-Control", "no-cache")
@@ -138,32 +138,32 @@ class DashboardHandler:
         router.send_header("Access-Control-Allow-Origin", "*")
         router.end_headers()
 
-        # Client zum Manager hinzufügen
+        # Add client to manager
         event_stream_manager.add_client(router)
 
         try:
-            # Sende initiales Event
-            DashboardHandler._send_sse_event(router, "connected", {"message": "Verbunden"})
+            # Send initial event
+            DashboardHandler._send_sse_event(router, "connected", {"message": "Connected"})
 
-            # Halte Verbindung offen und sende Keep-Alive
+            # Keep connection open and send keep-alive
             while True:
                 time.sleep(30)
                 DashboardHandler._send_sse_event(router, "ping", {"timestamp": datetime.now().isoformat()})
         except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen
+            # Client closed connection
             pass
         finally:
-            # Client aus Manager entfernen
+            # Remove client from manager
             event_stream_manager.remove_client(router)
 
     @staticmethod
     def _send_sse_event(router: "BaseHandler", event_type: str, data: dict) -> None:
-        """Sendet ein SSE-Event.
+        """Sends an SSE event.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            event_type: Event-Typ
-            data: Event-Daten
+            router: The router (BaseHandler instance) with request context
+            event_type: Event type
+            data: Event data
         """
         try:
             event_str = f"event: {event_type}\n"
@@ -171,6 +171,6 @@ class DashboardHandler:
             router.wfile.write(event_str.encode("utf-8"))
             router.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen
+            # Client closed connection
             raise
 

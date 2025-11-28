@@ -1,4 +1,4 @@
-"""Tests für ErrorHandler mit RuntimeError 429."""
+"""Tests for ErrorHandler with RuntimeError 429."""
 
 from __future__ import annotations
 
@@ -9,35 +9,35 @@ from homeconnect_coffee.errors import ErrorCode, ErrorHandler
 
 @pytest.mark.unit
 class TestErrorHandlerRuntime429:
-    """Tests für ErrorHandler mit RuntimeError bei 429."""
+    """Tests for ErrorHandler with RuntimeError at 429."""
 
     def test_handle_error_runtime_error_429(self):
-        """Test dass RuntimeError mit (429) als Rate-Limit erkannt wird."""
+        """Test that RuntimeError with (429) is recognized as rate limit."""
         handler = ErrorHandler(enable_logging=False)
         
-        exception = RuntimeError("API-Anfrage fehlgeschlagen (429): Rate limit exceeded")
+        exception = RuntimeError("API request failed (429): Rate limit exceeded")
         code, response = handler.handle_error(exception)
         
         assert code == ErrorCode.GATEWAY_TIMEOUT
-        assert response["error"] == "Rate-Limit erreicht. Bitte später erneut versuchen."
+        assert response["error"] == "Rate limit reached. Please try again later."
         assert response["code"] == ErrorCode.GATEWAY_TIMEOUT
         assert response["error_code"] == ErrorCode.API_ERROR
 
     def test_handle_error_runtime_error_429_different_message(self):
-        """Test dass RuntimeError mit (429) in verschiedenen Nachrichten erkannt wird."""
+        """Test that RuntimeError with (429) is recognized in different messages."""
         handler = ErrorHandler(enable_logging=False)
         
-        exception = RuntimeError("API-Anfrage fehlgeschlagen (429): Too Many Requests")
+        exception = RuntimeError("API request failed (429): Too Many Requests")
         code, response = handler.handle_error(exception)
         
         assert code == ErrorCode.GATEWAY_TIMEOUT
-        assert "Rate-Limit" in response["error"]
+        assert "Rate limit" in response["error"]
 
     def test_handle_error_runtime_error_not_429(self):
-        """Test dass RuntimeError ohne (429) nicht als Rate-Limit behandelt wird."""
+        """Test that RuntimeError without (429) is not treated as rate limit."""
         handler = ErrorHandler(enable_logging=False)
         
-        exception = RuntimeError("API-Anfrage fehlgeschlagen (500): Internal Server Error")
+        exception = RuntimeError("API request failed (500): Internal Server Error")
         code, response = handler.handle_error(
             exception,
             default_code=ErrorCode.INTERNAL_SERVER_ERROR,
@@ -49,10 +49,10 @@ class TestErrorHandlerRuntime429:
         assert response["code"] == ErrorCode.INTERNAL_SERVER_ERROR
 
     def test_handle_error_runtime_error_generic(self):
-        """Test dass generischer RuntimeError normal behandelt wird."""
+        """Test that generic RuntimeError is handled normally."""
         handler = ErrorHandler(enable_logging=False)
         
-        exception = RuntimeError("Unerwarteter Fehler")
+        exception = RuntimeError("Unexpected error")
         code, response = handler.handle_error(
             exception,
             default_code=ErrorCode.INTERNAL_SERVER_ERROR,

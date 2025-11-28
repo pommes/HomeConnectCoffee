@@ -1,4 +1,4 @@
-"""Unit-Tests für event_stream_manager.py (EventStreamManager)."""
+"""Unit tests for event_stream_manager.py (EventStreamManager)."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from homeconnect_coffee.services.event_stream_manager import EventStreamManager
 
 @pytest.mark.unit
 class TestEventStreamManager:
-    """Tests für EventStreamManager Klasse."""
+    """Tests for EventStreamManager class."""
 
     def test_init(self, temp_history_db):
-        """Test dass __init__ den Manager korrekt initialisiert."""
+        """Test that __init__ initializes the manager correctly."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -25,7 +25,7 @@ class TestEventStreamManager:
         assert len(event_manager._clients) == 0
 
     def test_add_client(self, temp_history_db):
-        """Test add_client() fügt Client hinzu."""
+        """Test add_client() adds client."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -42,7 +42,7 @@ class TestEventStreamManager:
         assert client2 in event_manager._clients
 
     def test_add_client_duplicate(self, temp_history_db):
-        """Test add_client() verhindert Duplikate."""
+        """Test add_client() prevents duplicates."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -51,12 +51,12 @@ class TestEventStreamManager:
         client = Mock()
         
         event_manager.add_client(client)
-        event_manager.add_client(client)  # Zweites Mal hinzufügen
+        event_manager.add_client(client)  # Add second time
         
         assert len(event_manager._clients) == 1
 
     def test_remove_client(self, temp_history_db):
-        """Test remove_client() entfernt Client."""
+        """Test remove_client() removes client."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -74,7 +74,7 @@ class TestEventStreamManager:
         assert client2 in event_manager._clients
 
     def test_remove_client_nonexistent(self, temp_history_db):
-        """Test remove_client() mit nicht existierendem Client."""
+        """Test remove_client() with non-existent client."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -87,7 +87,7 @@ class TestEventStreamManager:
         assert len(event_manager._clients) == 0
 
     def test_broadcast_event_no_clients(self, temp_history_db):
-        """Test broadcast_event() mit keinen Clients."""
+        """Test broadcast_event() with no clients."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -97,7 +97,7 @@ class TestEventStreamManager:
         event_manager.broadcast_event("test", {"data": "test"})
 
     def test_broadcast_event_with_clients(self, temp_history_db):
-        """Test broadcast_event() sendet Event an Clients."""
+        """Test broadcast_event() sends event to clients."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -111,16 +111,16 @@ class TestEventStreamManager:
         
         event_manager.broadcast_event("STATUS", {"status": "on"})
         
-        # Prüfe dass _send_sse_event aufgerufen wurde
+        # Check that _send_sse_event was called
         assert client1._send_sse_event.called
         assert client2._send_sse_event.called
         
-        # Prüfe dass korrekte Parameter übergeben wurden
+        # Check that correct parameters were passed
         client1._send_sse_event.assert_called_once_with("STATUS", {"status": "on"})
         client2._send_sse_event.assert_called_once_with("STATUS", {"status": "on"})
 
     def test_broadcast_event_removes_disconnected_clients(self, temp_history_db):
-        """Test broadcast_event() entfernt getrennte Clients."""
+        """Test broadcast_event() removes disconnected clients."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -129,7 +129,7 @@ class TestEventStreamManager:
         client1 = Mock()
         client2 = Mock()
         
-        # client1 wirft BrokenPipeError
+        # client1 raises BrokenPipeError
         client1._send_sse_event.side_effect = BrokenPipeError()
         
         event_manager.add_client(client1)
@@ -137,12 +137,12 @@ class TestEventStreamManager:
         
         event_manager.broadcast_event("STATUS", {"status": "on"})
         
-        # client1 sollte entfernt worden sein
+        # client1 should have been removed
         assert client1 not in event_manager._clients
         assert client2 in event_manager._clients
 
     def test_start_starts_workers(self, temp_history_db):
-        """Test start() startet Worker-Threads."""
+        """Test start() starts worker threads."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -150,14 +150,14 @@ class TestEventStreamManager:
         
         event_manager.start()
         
-        # Prüfe dass Threads gestartet wurden
+        # Check that threads were started
         assert event_manager._stream_running is True
         assert event_manager._stream_thread is not None
-        assert event_manager._stream_thread.is_alive() or not event_manager._stream_thread.is_alive()  # Thread könnte bereits beendet sein wenn Config fehlt
+        assert event_manager._stream_thread.is_alive() or not event_manager._stream_thread.is_alive()  # Thread might already be finished if config is missing
         assert event_manager._history_worker_thread is not None
 
     def test_stop_stops_worker(self, temp_history_db):
-        """Test stop() stoppt Worker."""
+        """Test stop() stops worker."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -166,12 +166,12 @@ class TestEventStreamManager:
         event_manager.start()
         event_manager.stop()
         
-        # Prüfe dass Stop-Event gesetzt wurde
+        # Check that stop event was set
         assert event_manager._stream_stop_event.is_set()
         assert event_manager._stream_running is False
 
     def test_start_idempotent(self, temp_history_db):
-        """Test start() kann mehrfach aufgerufen werden."""
+        """Test start() can be called multiple times."""
         from homeconnect_coffee.history import HistoryManager
         
         manager = HistoryManager(temp_history_db)
@@ -180,8 +180,8 @@ class TestEventStreamManager:
         event_manager.start()
         thread1 = event_manager._stream_thread
         
-        event_manager.start()  # Zweites Mal
+        event_manager.start()  # Second time
         
-        # Sollte nicht crashen, Thread sollte gleich bleiben
+        # Should not crash, thread should remain the same
         assert event_manager._stream_running is True
 

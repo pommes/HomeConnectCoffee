@@ -1,4 +1,4 @@
-"""Services für HomeConnect Coffee."""
+"""Services for HomeConnect Coffee."""
 
 from .coffee_service import CoffeeService
 from .event_stream_manager import EventStreamManager

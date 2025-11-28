@@ -1,4 +1,4 @@
-"""Service für Coffee-Operationen (Wake, Brew)."""
+"""Service for coffee operations (Wake, Brew)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ FILL_OPTION = "ConsumerProducts.CoffeeMaker.Option.FillQuantity"
 
 
 def build_options(fill_ml: int | None) -> list[dict[str, object]]:
-    """Baut Options-Liste für Espresso-Programm."""
+    """Builds options list for espresso program."""
     options: list[dict[str, object]] = []
     if fill_ml is not None:
         options.append({"key": FILL_OPTION, "value": fill_ml})
@@ -22,64 +22,64 @@ def build_options(fill_ml: int | None) -> list[dict[str, object]]:
 
 
 class CoffeeService:
-    """Service für Coffee-Operationen."""
+    """Service for coffee operations."""
 
     def __init__(self, client: HomeConnectClient) -> None:
-        """Initialisiert den CoffeeService mit einem HomeConnectClient."""
+        """Initializes the CoffeeService with a HomeConnectClient."""
         self.client = client
 
     def wake_device(self) -> Dict[str, Any]:
-        """Aktiviert das Gerät aus dem Standby.
+        """Activates the device from standby.
         
         Returns:
-            Dict mit Status und Message:
+            Dict with status and message:
             - {"status": "activated", "message": "..."}
             - {"status": "already_on", "message": "..."}
             - {"status": "unknown", "message": "..."}
         """
-        # Versuche zuerst direkt zu aktivieren - schneller als erst Status zu prüfen
+        # Try to activate directly first - faster than checking status first
         try:
             self.client.set_setting("BSH.Common.Setting.PowerState", "BSH.Common.EnumType.PowerState.On")
-            return {"status": "activated", "message": "Gerät wurde aktiviert"}
+            return {"status": "activated", "message": "Device was activated"}
         except RuntimeError:
-            # Wenn Aktivierung fehlschlägt, prüfe ob Gerät bereits aktiv ist
+            # If activation fails, check if device is already active
             try:
                 status = self.client.get_status()
                 for item in status.get("data", {}).get("status", []):
                     if item.get("key") == "BSH.Common.Status.OperationState":
                         op_state = item.get("value")
                         if op_state != "BSH.Common.EnumType.OperationState.Inactive":
-                            return {"status": "already_on", "message": "Gerät ist bereits aktiviert"}
+                            return {"status": "already_on", "message": "Device is already activated"}
                         break
                 
-                # Fallback: Prüfe Settings
+                # Fallback: Check settings
                 settings = self.client.get_settings()
                 for setting in settings.get("data", {}).get("settings", []):
                     if setting.get("key") == "BSH.Common.Setting.PowerState":
                         power_state = setting.get("value")
                         if power_state == "BSH.Common.EnumType.PowerState.On":
-                            return {"status": "already_on", "message": "Gerät ist bereits aktiviert"}
+                            return {"status": "already_on", "message": "Device is already activated"}
                         break
                 
-                return {"status": "unknown", "message": "Konnte PowerState nicht bestimmen"}
+                return {"status": "unknown", "message": "Could not determine PowerState"}
             except Exception:
-                # Wenn Status-Prüfung fehlschlägt, nehme an dass Aktivierung erfolgreich war
-                return {"status": "activated", "message": "Gerät wurde aktiviert"}
+                # If status check fails, assume activation was successful
+                return {"status": "activated", "message": "Device was activated"}
 
     def brew_espresso(self, fill_ml: int) -> Dict[str, Any]:
-        """Startet einen Espresso.
+        """Starts an espresso.
         
         Args:
-            fill_ml: Füllmenge in ml (35-50 ml)
+            fill_ml: Fill amount in ml (35-50 ml)
         
         Returns:
-            Dict mit Status und Message:
-            - {"status": "started", "message": "Espresso (X ml) wird zubereitet"}
+            Dict with status and message:
+            - {"status": "started", "message": "Espresso (X ml) is being prepared"}
         
         Raises:
-            RuntimeError: Wenn das Programm nicht gestartet werden kann
+            RuntimeError: If the program cannot be started
         """
-        # Aktiviere Gerät falls nötig
+        # Activate device if necessary
         try:
             settings = self.client.get_settings()
             for setting in settings.get("data", {}).get("settings", []):
@@ -87,19 +87,19 @@ class CoffeeService:
                     if setting.get("value") == "BSH.Common.EnumType.PowerState.Standby":
                         self.client.set_setting("BSH.Common.Setting.PowerState", "BSH.Common.EnumType.PowerState.On")
         except Exception:
-            # Fehler beim Aktivieren ignorieren, versuche trotzdem zu brühen
+            # Ignore activation errors, try to brew anyway
             pass
 
-        # Wähle Programm aus
+        # Select program
         options = build_options(fill_ml)
         try:
             self.client.clear_selected_program()
         except Exception:
-            # Ignoriere Fehler, falls kein Programm ausgewählt ist
+            # Ignore errors if no program is selected
             pass
 
         self.client.select_program(ESPRESSO_KEY, options=options)
         self.client.start_program()
 
-        return {"status": "started", "message": f"Espresso ({fill_ml} ml) wird zubereitet"}
+        return {"status": "started", "message": f"Espresso ({fill_ml} ml) is being prepared"}
 

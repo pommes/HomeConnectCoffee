@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Verarbeitet vorhandene Events in der History nachträglich und fügt fehlende program_started Events hinzu.
+Processes existing events in the history retroactively and adds missing program_started events.
 """
 
 from __future__ import annotations
@@ -10,20 +10,20 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Füge src zum Python-Pfad hinzu
+# Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from homeconnect_coffee.history import HistoryManager
 
 
 def fix_history(history_path: Path) -> None:
-    """Verarbeitet vorhandene Events und fügt fehlende program_started Events hinzu."""
+    """Processes existing events and adds missing program_started events."""
     manager = HistoryManager(history_path)
     
-    # Lese alle Events
+    # Read all events
     all_events = manager.get_history()
     
-    # Finde alle Events, die ActiveProgram enthalten, aber noch kein program_started Event haben
+    # Find all events that contain ActiveProgram but don't have a program_started event yet
     program_started_timestamps = {
         event["timestamp"] 
         for event in all_events 
@@ -32,30 +32,30 @@ def fix_history(history_path: Path) -> None:
     
     new_events = []
     
-    # Durchsuche alle Events nach ActiveProgram Events
+    # Search all events for ActiveProgram events
     for event in all_events:
         event_type = event.get("type", "").lower()
         payload = event.get("data", {})
         
-        # Prüfe NOTIFY und EVENT Events
+        # Check NOTIFY and EVENT events
         if event_type in ("notify", "event"):
             items = payload.get("items", [])
             for item in items:
                 item_key = item.get("key")
                 item_value = item.get("value")
                 
-                # ActiveProgram Event: Wenn value nicht null ist, wurde ein Programm gestartet
+                # ActiveProgram Event: If value is not null, a program was started
                 if item_key == "BSH.Common.Root.ActiveProgram" and item_value:
-                    # Prüfe ob bereits ein program_started Event für diesen Timestamp existiert
+                    # Check if a program_started event already exists for this timestamp
                     event_timestamp = event.get("timestamp")
                     if event_timestamp not in program_started_timestamps:
-                        # Füge program_started Event hinzu
+                        # Add program_started event
                         if isinstance(item_value, dict):
-                            # value ist ein Objekt mit "key" und "options"
+                            # value is an object with "key" and "options"
                             program_key = item_value.get("key", "Unknown")
                             options = item_value.get("options", [])
                         elif isinstance(item_value, str):
-                            # value ist direkt der Programm-Key (String)
+                            # value is directly the program key (string)
                             program_key = item_value
                             options = []
                         else:
@@ -70,11 +70,11 @@ def fix_history(history_path: Path) -> None:
                             },
                         })
                         program_started_timestamps.add(event_timestamp)
-                        print(f"✓ Füge program_started Event hinzu: {program_key} am {event_timestamp}")
+                        print(f"✓ Adding program_started event: {program_key} at {event_timestamp}")
     
-    # Füge neue Events zur History hinzu
+    # Add new events to history
     if new_events:
-        print(f"\nFüge {len(new_events)} neue program_started Events hinzu...")
+        print(f"\nAdding {len(new_events)} new program_started events...")
         for new_event in new_events:
             # Parse timestamp
             try:
@@ -87,19 +87,19 @@ def fix_history(history_path: Path) -> None:
                 new_event["data"],
                 timestamp=timestamp
             )
-        print(f"✓ History aktualisiert!")
+        print(f"✓ History updated!")
     else:
-        print("Keine neuen Events gefunden.")
+        print("No new events found.")
 
 
 def main() -> None:
     history_path = Path(__file__).parent.parent / "history.json"
     
     if not history_path.exists():
-        print(f"History-Datei nicht gefunden: {history_path}")
+        print(f"History file not found: {history_path}")
         sys.exit(1)
     
-    print(f"Verarbeite History-Datei: {history_path}")
+    print(f"Processing history file: {history_path}")
     fix_history(history_path)
 
 

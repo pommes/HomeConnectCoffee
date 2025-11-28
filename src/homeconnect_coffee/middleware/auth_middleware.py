@@ -1,4 +1,4 @@
-"""Authentifizierungs-Middleware für HTTP-Handler."""
+"""Authentication middleware for HTTP handlers."""
 
 from __future__ import annotations
 
@@ -12,46 +12,46 @@ if TYPE_CHECKING:
 
 
 class AuthMiddleware:
-    """Middleware für Token-basierte Authentifizierung.
+    """Middleware for token-based authentication.
     
-    Unterstützt:
-    - Bearer Token im Authorization Header
-    - Token als Query-Parameter (?token=...)
+    Supports:
+    - Bearer token in Authorization header
+    - Token as query parameter (?token=...)
     
-    Die Middleware kann als Wrapper für Handler-Methoden verwendet werden
-    oder direkt in Handler-Methoden aufgerufen werden.
+    The middleware can be used as a wrapper for handler methods
+    or called directly in handler methods.
     """
 
     def __init__(self, api_token: str | None = None, error_handler=None):
-        """Initialisiert die Auth-Middleware.
+        """Initializes the auth middleware.
         
         Args:
-            api_token: Das zu prüfende API-Token. Wenn None, ist Authentifizierung deaktiviert.
-            error_handler: Optionaler ErrorHandler für Fehler-Responses.
+            api_token: The API token to check. If None, authentication is disabled.
+            error_handler: Optional error handler for error responses.
         """
         self.api_token = api_token
         self.error_handler = error_handler
 
     def check_auth(self, router: "BaseHandler") -> bool:
-        """Prüft die Authentifizierung via Header oder Query-Parameter.
+        """Checks authentication via header or query parameter.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
             
         Returns:
-            True wenn authentifiziert, False sonst
+            True if authenticated, False otherwise
         """
         if self.api_token is None:
-            return True  # Kein Token konfiguriert = offen
+            return True  # No token configured = open
 
-        # Prüfe Authorization Header
+        # Check Authorization header
         auth_header = router.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
             if token == self.api_token:
                 return True
 
-        # Prüfe Query-Parameter
+        # Check query parameter
         parsed_path = urlparse(router.path)
         query_params = parse_qs(parsed_path.query)
         token_param = query_params.get("token", [None])[0]
@@ -61,13 +61,13 @@ class AuthMiddleware:
         return False
 
     def require_auth(self, router: "BaseHandler") -> bool:
-        """Prüft Authentifizierung und sendet 401 bei Fehler.
+        """Checks authentication and sends 401 on error.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
             
         Returns:
-            True wenn authentifiziert, False wenn 401 gesendet wurde
+            True if authenticated, False if 401 was sent
         """
         if not self.check_auth(router):
             if self.error_handler:
@@ -83,13 +83,13 @@ class AuthMiddleware:
         return True
 
     def __call__(self, router: "BaseHandler") -> bool:
-        """Ermöglicht Middleware als Callable zu verwenden.
+        """Allows middleware to be used as a callable.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
             
         Returns:
-            True wenn authentifiziert, False wenn 401 gesendet wurde
+            True if authenticated, False if 401 was sent
         """
         return self.require_auth(router)
 

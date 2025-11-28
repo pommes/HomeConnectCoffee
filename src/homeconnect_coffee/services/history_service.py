@@ -1,4 +1,4 @@
-"""Service für History-Verwaltung."""
+"""Service for history management."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from ..history import HistoryManager
 
 
 class HistoryService:
-    """Service für History-Verwaltung."""
+    """Service for history management."""
 
     def __init__(self, history_manager: HistoryManager) -> None:
-        """Initialisiert den HistoryService mit einem HistoryManager."""
+        """Initializes the HistoryService with a HistoryManager."""
         self.history_manager = history_manager
 
     def get_history(
@@ -20,34 +20,34 @@ class HistoryService:
         limit: Optional[int] = None,
         before_timestamp: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Gibt die Event-History zurück.
+        """Returns the event history.
         
         Args:
-            event_type: Optionaler Filter für Event-Typ
-            limit: Maximale Anzahl Events
-            before_timestamp: ISO 8601 Timestamp für Cursor-basierte Pagination
+            event_type: Optional filter for event type
+            limit: Maximum number of events
+            before_timestamp: ISO 8601 timestamp for cursor-based pagination
         
         Returns:
-            Liste von Events
+            List of events
         """
         return self.history_manager.get_history(event_type, limit, before_timestamp)
 
     def get_program_counts(self) -> Dict[str, int]:
-        """Gibt die Anzahl der Nutzung pro Programm zurück.
+        """Returns the usage count per program.
         
         Returns:
-            Dict mit Programm-Keys als Keys und Anzahl als Values
+            Dict with program keys as keys and count as values
         """
         return self.history_manager.get_program_counts()
 
     def get_daily_usage(self, days: int = 7) -> Dict[str, int]:
-        """Gibt die tägliche Nutzung der letzten N Tage zurück.
+        """Returns the daily usage of the last N days.
         
         Args:
-            days: Anzahl der Tage (Standard: 7)
+            days: Number of days (default: 7)
         
         Returns:
-            Dict mit Datum (YYYY-MM-DD) als Keys und Anzahl als Values
+            Dict with date (YYYY-MM-DD) as keys and count as values
         """
         return self.history_manager.get_daily_usage(days)
 

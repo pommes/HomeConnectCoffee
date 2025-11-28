@@ -13,8 +13,8 @@ EVENTS_URL = "https://api.home-connect.com/api/homeappliances/events"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Hört den HomeConnect Eventstream ab")
-    parser.add_argument("--limit", type=int, default=0, help="Anzahl Events (0 = unendlich)")
+    parser = argparse.ArgumentParser(description="Listens to the HomeConnect event stream")
+    parser.add_argument("--limit", type=int, default=0, help="Number of events (0 = unlimited)")
     args = parser.parse_args()
 
     config = load_config()
@@ -26,7 +26,7 @@ def main() -> None:
         "Accept": "text/event-stream",
     }
 
-    print("[bold]Verbinde mit HomeConnect Events...[/bold]")
+    print("[bold]Connecting to HomeConnect events...[/bold]")
 
     count = 0
     try:
@@ -43,7 +43,7 @@ def main() -> None:
             if args.limit and count >= args.limit:
                 break
     except KeyboardInterrupt:
-        print("\nAbgebrochen.")
+        print("\nCancelled.")
 
 
 if __name__ == "__main__":

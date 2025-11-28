@@ -1,4 +1,4 @@
-"""Handler für History-Endpoints."""
+"""Handler for history endpoints."""
 
 from __future__ import annotations
 
@@ -13,23 +13,23 @@ from ..services import HistoryService
 if TYPE_CHECKING:
     from .base_handler import BaseHandler
 
-# Globale Variablen (werden in server.py gesetzt)
+# Global variables (set in server.py)
 history_manager: HistoryManager | None = None
 
 
 class HistoryHandler:
-    """Handler für History-Endpoints: /api/history und /api/stats.
+    """Handler for history endpoints: /api/history and /api/stats.
     
-    Handler-Methoden sind statisch und nehmen den Router als Parameter.
+    Handler methods are static and take the router as a parameter.
     """
 
     @staticmethod
     def handle_history(router: "BaseHandler", query_params: dict) -> None:
-        """Gibt die Verlaufsdaten zurück.
+        """Returns the history data.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            query_params: Query-Parameter aus dem Request
+            router: The router (BaseHandler instance) with request context
+            query_params: Query parameters from the request
         """
         global history_manager
         
@@ -37,12 +37,12 @@ class HistoryHandler:
             if router.error_handler:
                 response = router.error_handler.create_error_response(
                     ErrorCode.INTERNAL_SERVER_ERROR,
-                    "History-Manager nicht initialisiert",
+                    "History manager not initialized",
                     ErrorCode.INTERNAL_SERVER_ERROR,
                 )
                 router._send_error_response(ErrorCode.INTERNAL_SERVER_ERROR, response)
             else:
-                router._send_error(500, "History-Manager nicht initialisiert")
+                router._send_error(500, "History manager not initialized")
             return
 
         try:
@@ -50,55 +50,55 @@ class HistoryHandler:
 
             event_type = query_params.get("type", [None])[0]
             limit = query_params.get("limit", [None])[0]
-            # Begrenze Limit auf maximal 1000, um Server-Überlastung zu vermeiden
+            # Limit to maximum 1000 to avoid server overload
             limit_int = min(int(limit), 1000) if limit and limit.isdigit() else None
 
-            # Cursor-basierte Pagination: before_timestamp
+            # Cursor-based pagination: before_timestamp
             before_timestamp = query_params.get("before_timestamp", [None])[0]
 
             if query_params.get("daily_usage"):
-                # Tägliche Nutzung
-                days = min(int(query_params.get("days", ["7"])[0]), 365)  # Max 1 Jahr
+                # Daily usage
+                days = min(int(query_params.get("days", ["7"])[0]), 365)  # Max 1 year
                 usage = history_service.get_daily_usage(days)
                 router._send_json({"daily_usage": usage}, status_code=200)
             elif query_params.get("program_counts"):
-                # Programm-Zählungen
+                # Program counts
                 counts = history_service.get_program_counts()
                 router._send_json({"program_counts": counts}, status_code=200)
             else:
-                # Standard-History
+                # Standard history
                 history = history_service.get_history(event_type, limit_int, before_timestamp)
                 router._send_json({"history": history}, status_code=200)
         except ValueError as e:
             if router.error_handler:
-                code, response = router.error_handler.handle_error(e, default_message="Ungültiger Parameter")
+                code, response = router.error_handler.handle_error(e, default_message="Invalid parameter")
                 router._send_error_response(code, response)
             else:
-                router._send_error(400, f"Ungültiger Parameter: {str(e)}")
+                router._send_error(400, f"Invalid parameter: {str(e)}")
         except Exception as e:
             if router.error_handler:
-                code, response = router.error_handler.handle_error(e, default_message="Fehler beim Laden der History")
+                code, response = router.error_handler.handle_error(e, default_message="Error loading history")
                 router._send_error_response(code, response)
             else:
-                router._send_error(500, "Fehler beim Laden der History")
+                router._send_error(500, "Error loading history")
 
     @staticmethod
     def handle_api_stats(router: "BaseHandler") -> None:
-        """Gibt die API-Call-Statistiken zurück.
+        """Returns the API call statistics.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
+            router: The router (BaseHandler instance) with request context
         """
         try:
-            # api_stats.json liegt im Projekt-Root (2 Ebenen über handlers/)
+            # api_stats.json is in project root (2 levels above handlers/)
             stats_path = Path(__file__).parent.parent.parent.parent / "api_stats.json"
             monitor = get_monitor(stats_path)
             stats = monitor.get_stats()
             router._send_json(stats, status_code=200)
         except Exception as e:
             if router.error_handler:
-                code, response = router.error_handler.handle_error(e, default_message="Fehler beim Laden der API-Statistiken")
+                code, response = router.error_handler.handle_error(e, default_message="Error loading API statistics")
                 router._send_error_response(code, response)
             else:
-                router._send_error(500, "Fehler beim Laden der API-Statistiken")
+                router._send_error(500, "Error loading API statistics")
 

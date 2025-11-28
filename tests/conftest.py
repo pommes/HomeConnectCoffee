@@ -1,4 +1,4 @@
-"""Pytest-Konfiguration und Fixtures."""
+"""Pytest configuration and fixtures."""
 
 from __future__ import annotations
 
@@ -14,25 +14,25 @@ from homeconnect_coffee.config import HomeConnectConfig
 
 @pytest.fixture
 def temp_dir(tmp_path: Path) -> Path:
-    """Erstellt ein temporäres Verzeichnis für Tests."""
+    """Creates a temporary directory for tests."""
     return tmp_path
 
 
 @pytest.fixture
 def temp_token_file(temp_dir: Path) -> Path:
-    """Erstellt eine temporäre Token-Datei."""
+    """Creates a temporary token file."""
     return temp_dir / "tokens.json"
 
 
 @pytest.fixture
 def temp_history_db(temp_dir: Path) -> Path:
-    """Erstellt einen temporären Pfad für History-DB."""
+    """Creates a temporary path for history DB."""
     return temp_dir / "history.db"
 
 
 @pytest.fixture
 def valid_token_bundle() -> TokenBundle:
-    """Erstellt ein gültiges TokenBundle für Tests."""
+    """Creates a valid TokenBundle for tests."""
     return TokenBundle(
         access_token="test_access_token",
         refresh_token="test_refresh_token",
@@ -44,7 +44,7 @@ def valid_token_bundle() -> TokenBundle:
 
 @pytest.fixture
 def expired_token_bundle() -> TokenBundle:
-    """Erstellt ein abgelaufenes TokenBundle für Tests."""
+    """Creates an expired TokenBundle for tests."""
     return TokenBundle(
         access_token="test_access_token",
         refresh_token="test_refresh_token",
@@ -56,7 +56,7 @@ def expired_token_bundle() -> TokenBundle:
 
 @pytest.fixture
 def test_config(temp_dir: Path, temp_token_file: Path) -> HomeConnectConfig:
-    """Erstellt eine Test-Konfiguration."""
+    """Creates a test configuration."""
     return HomeConnectConfig(
         client_id="test_client_id",
         client_secret="test_client_secret",

@@ -1,9 +1,9 @@
 # Changelog
 
-Alle bemerkenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
+All notable changes to this project will be documented in this file.
 
-Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
-und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -11,186 +11,185 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Added
 
-#### Architektur-Refactoring
-- **Service-Layer** eingeführt für Business-Logic-Isolation
+#### Architecture Refactoring
+- **Service Layer** introduced for business logic isolation
   - **Commit:** [`1d1fd07`](https://github.com/pommes/HomeConnectCoffee/commit/1d1fd07)
-  - `CoffeeService` - Kapselt Coffee-Operationen (Wake, Brew)
-  - `StatusService` - Kapselt Status-Abfragen
-  - `HistoryService` - Kapselt History-Abfragen
-  - Services sind isoliert testbar und wiederverwendbar
+  - `CoffeeService` - Encapsulates coffee operations (Wake, Brew)
+  - `StatusService` - Encapsulates status queries
+  - `HistoryService` - Encapsulates history queries
+  - Services are isolated, testable, and reusable
 
-- **Handler-Aufteilung** für bessere Wartbarkeit
+- **Handler Split** for better maintainability
   - **Commit:** [`87fafce`](https://github.com/pommes/HomeConnectCoffee/commit/87fafce)
-  - Monolithischer `CoffeeHandler` (815 Zeilen) aufgeteilt in:
-    - `CoffeeHandler` - Coffee-Operationen (~90 Zeilen)
-    - `StatusHandler` - Status-Endpoints (~75 Zeilen)
-    - `HistoryHandler` - History-Endpoints (~105 Zeilen)
-    - `DashboardHandler` - Dashboard/öffentliche Endpoints (~177 Zeilen)
-    - `RequestRouter` - Request-Routing (~137 Zeilen)
-  - Handler-Methoden sind statisch und nehmen Router als Parameter
-  - Keine komplexe Initialisierung mehr nötig
+  - Monolithic `CoffeeHandler` (815 lines) split into:
+    - `CoffeeHandler` - Coffee operations (~90 lines)
+    - `StatusHandler` - Status endpoints (~75 lines)
+    - `HistoryHandler` - History endpoints (~105 lines)
+    - `DashboardHandler` - Dashboard/public endpoints (~177 lines)
+    - `RequestRouter` - Request routing (~137 lines)
+  - Handler methods are static and take router as parameter
+  - No complex initialization needed anymore
 
-- **EventStreamManager** für Event-Stream-Management
+- **EventStreamManager** for event stream management
   - **Commit:** [`aa7eab6`](https://github.com/pommes/HomeConnectCoffee/commit/aa7eab6)
-  - Kapselt Event-Stream-Worker und History-Worker
-  - Verwaltet verbundene SSE-Clients
-  - Thread-Management zentralisiert
-  - Globale Variablen für Event-Stream entfernt
+  - Encapsulates event stream worker and history worker
+  - Manages connected SSE clients
+  - Centralized thread management
+  - Removed global variables for event stream
 
-- **AuthMiddleware** für Authentifizierung
+- **AuthMiddleware** for authentication
   - **Commit:** [`da01a61`](https://github.com/pommes/HomeConnectCoffee/commit/da01a61)
-  - Token-basierte Authentifizierung isoliert
-  - Einfach erweiterbar (z.B. OAuth, API-Keys)
-  - Callable-Interface: `middleware(router)`
-  - Rückwärtskompatibel mit Legacy-Authentifizierung
+  - Token-based authentication isolated
+  - Easily extensible (e.g., OAuth, API keys)
+  - Callable interface: `middleware(router)`
+  - Backward compatible with legacy authentication
 
-- **ErrorHandler** für zentralisiertes Error-Handling
+- **ErrorHandler** for centralized error handling
   - **Commit:** [`a8fc20e`](https://github.com/pommes/HomeConnectCoffee/commit/a8fc20e)
-  - Konsistente Error-Response-Formatierung
-  - Strukturiertes, farbiges Logging (orange für WARNING, rot für ERROR)
-  - Exception-Klassifizierung zu HTTP-Status-Codes
-  - `ColoredFormatter` für Terminal-Ausgabe mit Terminal-Erkennung
+  - Consistent error response formatting
+  - Structured, colored logging (orange for WARNING, red for ERROR)
+  - Exception classification to HTTP status codes
+  - `ColoredFormatter` for terminal output with terminal detection
 
-- **Testing-Infrastruktur** mit pytest
+- **Testing Infrastructure** with pytest
   - **Commit:** [`40ac511`](https://github.com/pommes/HomeConnectCoffee/commit/40ac511)
-  - 109 Unit-Tests mit >66% Code-Coverage
-  - Tests für Services, Handler, Middleware, Error-Handling
-  - Mock-basierte Tests für isolierte Komponenten
+  - 109 unit tests with >66% code coverage
+  - Tests for services, handlers, middleware, error handling
+  - Mock-based tests for isolated components
 
 ### Changed
 
-- **Server-Architektur** komplett refactored
-  - `server.py` von 815 auf ~180 Zeilen reduziert
-  - Single Responsibility Principle durchgesetzt
-  - Globale Variablen weitgehend eliminiert
-  - Dependency Injection für bessere Testbarkeit
+- **Server Architecture** completely refactored
+  - `server.py` reduced from 815 to ~180 lines
+  - Single Responsibility Principle enforced
+  - Global variables largely eliminated
+  - Dependency injection for better testability
 
-- **Handler-Initialisierung** vereinfacht
-  - Statische Handler-Methoden statt komplexer Instanziierung
-  - Keine `_skip_auto_handle` Logik mehr nötig
-  - Direkte Methodenaufrufe statt Attribut-Kopie
+- **Handler Initialization** simplified
+  - Static handler methods instead of complex instantiation
+  - No `_skip_auto_handle` logic needed anymore
+  - Direct method calls instead of attribute copying
 
-- **Authentifizierung** als Middleware-Pattern
-  - Handler akzeptieren optionalen `auth_middleware` Parameter
-  - Legacy-Methode `router._require_auth()` bleibt verfügbar
+- **Authentication** as middleware pattern
+  - Handlers accept optional `auth_middleware` parameter
+  - Legacy method `router._require_auth()` remains available
 
 ### Fixed
 
-- Komplexe Handler-Initialisierung mit `_skip_auto_handle` entfernt
-- Manuelle Attribut-Kopie zwischen Router und Handlern entfernt
-- Tight Coupling zwischen Router und Handler-Klassen reduziert
+- Removed complex handler initialization with `_skip_auto_handle`
+- Removed manual attribute copying between router and handlers
+- Reduced tight coupling between router and handler classes
 
 ## [1.0.0] - 2025-11-28
 
 ### Added
 
-#### API-Monitoring und Rate-Limit-Optimierung
+#### API Monitoring and Rate Limit Optimization
 - **Commit:** [`d2b9420`](https://github.com/pommes/HomeConnectCoffee/commit/d2b9420)
-- API-Call-Monitoring-System implementiert (`api_monitor.py`)
-- Tägliche API-Call-Statistiken mit automatischem Reset
-- Warnungen bei 80%, 95% und 100% des Tageslimits (1000 Calls)
-- HTTP-Endpoint `/api/stats` für Statistiken
-- Event-Stream statt periodischem Polling im Dashboard
-- Reduzierung von ~5.760 API Calls/Tag auf ~2-5 Calls pro Seitenaufruf
-- Exponentielles Backoff bei 429 Rate-Limit-Fehlern
-- Retry-After Header Support für Rate-Limit-Handling
+- API call monitoring system implemented (`api_monitor.py`)
+- Daily API call statistics with automatic reset
+- Warnings at 80%, 95%, and 100% of daily limit (1000 calls)
+- HTTP endpoint `/api/stats` for statistics
+- Event stream instead of periodic polling in dashboard
+- Reduction from ~5,760 API calls/day to ~2-5 calls per page load
+- Exponential backoff on 429 rate limit errors
+- Retry-After header support for rate limit handling
 
-#### Lazy Loading für Event-History
+#### Lazy Loading for Event History
 - **Commit:** [`0993e12`](https://github.com/pommes/HomeConnectCoffee/commit/0993e12)
-- Infinite Scroll für Event-Log im Dashboard
-- Cursor-basierte Pagination mit `before_timestamp` Parameter
-- Initial Load: 20 Events statt 50 für schnellere Ladezeit
-- Automatisches Nachladen beim Scrollen nach unten
-- Neueste Events werden oben angezeigt
-- Loading-Indikator während des Nachladens
+- Infinite scroll for event log in dashboard
+- Cursor-based pagination with `before_timestamp` parameter
+- Initial load: 20 events instead of 50 for faster load time
+- Automatic loading when scrolling down
+- Newest events displayed at top
+- Loading indicator during loading
 
-#### SQLite Migration für Event-History
+#### SQLite Migration for Event History
 - **Commit:** [`1e4506d`](https://github.com/pommes/HomeConnectCoffee/commit/1e4506d)
-- Migration von JSON zu SQLite für bessere Performance
-- Automatische Migration beim ersten Start
-- Indizes auf `timestamp` und `type` für effiziente Queries
-- O(1) INSERT statt O(n) bei JSON (nur neues Event wird geschrieben)
-- Export-Script `export_to_json.py` für Backups
-- Migration-Script `migrate_to_sqlite.py` für manuelle Migration
-- Makefile-Targets: `make migrate_history` und `make export_history`
-- Reduzierung von 5.5 MB geschriebenen Daten/Stunde auf nur neue Events
+- Migration from JSON to SQLite for better performance
+- Automatic migration on first start
+- Indexes on `timestamp` and `type` for efficient queries
+- O(1) INSERT instead of O(n) with JSON (only new event is written)
+- Export script `export_to_json.py` for backups
+- Migration script `migrate_to_sqlite.py` for manual migration
+- Makefile targets: `make migrate_history` and `make export_history`
+- Reduction from 5.5 MB written data/hour to only new events
 
-#### Dashboard UI mit Event-Stream und Persistierung
+#### Dashboard UI with Event Stream and Persistence
 - **Commit:** [`b29a93c`](https://github.com/pommes/HomeConnectCoffee/commit/b29a93c)
-- Dashboard HTML-Interface (`/dashboard`)
-- Server-Sent Events (SSE) für Live-Updates
-- Event-Persistierung in History-Datenbank
-- Reload-Funktionalität: Events bleiben nach Seiten-Reload erhalten
-- Live-Status-Anzeige (Power State, Operation State)
-- Aktives Programm-Anzeige
-- Programm-Nutzung Chart (Bar Chart)
-- Tägliche Nutzung Chart (Line Chart, letzte 7 Tage)
-- Event-Log mit Live-Events
-- ThreadingHTTPServer für gleichzeitige Request-Verarbeitung
+- Dashboard HTML interface (`/dashboard`)
+- Server-Sent Events (SSE) for live updates
+- Event persistence in history database
+- Reload functionality: events remain after page reload
+- Live status display (Power State, Operation State)
+- Active program display
+- Program usage chart (bar chart)
+- Daily usage chart (line chart, last 7 days)
+- Event log with live events
+- ThreadingHTTPServer for concurrent request processing
 
-#### Token-Authentifizierung und TLS
+#### Token Authentication and TLS
 - **Commit:** [`200c338`](https://github.com/pommes/HomeConnectCoffee/commit/200c338)
-- Token-basierte Authentifizierung für API-Endpoints
-- Bearer Token im Authorization-Header
-- Token als URL-Parameter (mit Maskierung im Log)
-- SSL-Zertifikat-Generierung (`make cert`)
-- Selbstsigniertes Zertifikat für `localhost`, `*.local` und `elias.local`
-- HTTPS-Support für sichere Verbindungen
-- Zertifikat-Installation im Mac Schlüsselbund (`make cert_install`)
-- Zertifikat-Export für iOS-Installation (`make cert_export`)
-- Zertifikat-Download-Endpoint `/cert` für Browser-Download
+- Token-based authentication for API endpoints
+- Bearer token in Authorization header
+- Token as URL parameter (with masking in log)
+- SSL certificate generation (`make cert`)
+- Self-signed certificate for `localhost`, `*.local` and `elias.local`
+- HTTPS support for secure connections
+- Certificate installation in Mac keychain (`make cert_install`)
+- Certificate export for iOS installation (`make cert_export`)
+- Certificate download endpoint `/cert` for browser download
 
-#### HTTP-Server für Siri Shortcuts Integration
+#### HTTP Server for Siri Shortcuts Integration
 - **Commit:** [`c43e560`](https://github.com/pommes/HomeConnectCoffee/commit/c43e560)
-- HTTP-Server für iOS/iPadOS Zugriff
+- HTTP server for iOS/iPadOS access
 - Endpoints:
-  - `GET /wake` - Aktiviert das Gerät
-  - `GET /status` - Zeigt den Gerätestatus
-  - `GET /api/status` - Erweiterter Status (Settings, Programme)
-  - `POST /brew` - Startet einen Espresso
-  - `GET /health` - Health-Check
-- Shell-Scripts für Siri Shortcuts (`wake.sh`, `brew.sh`)
-- Request-Logging mit Token-Maskierung
-- CORS-Header für Cross-Origin-Requests
+  - `GET /wake` - Activates the device
+  - `GET /status` - Shows the device status
+  - `GET /api/status` - Extended status (Settings, Programs)
+  - `POST /brew` - Starts an espresso
+  - `GET /health` - Health check
+- Shell scripts for Siri Shortcuts (`wake.sh`, `brew.sh`)
+- Request logging with token masking
+- CORS headers for cross-origin requests
 
-#### Basis CLI API und Makefile
+#### Base CLI API and Makefile
 - **Commit:** [`9448183`](https://github.com/pommes/HomeConnectCoffee/commit/9448183)
-- Initiale Projektstruktur
-- HomeConnect API Integration
+- Initial project structure
+- HomeConnect API integration
 - OAuth 2.0 Authorization Code Flow
-- CLI-Scripts:
-  - `start_auth_flow.py` - OAuth-Authentifizierung
-  - `brew_espresso.py` - Espresso starten
-  - `device_status.py` - Gerätestatus abrufen
-  - `events.py` - Event-Stream überwachen
-  - `wake_device.py` - Gerät aktivieren
-- Makefile mit Targets: `init`, `auth`, `brew`, `status`, `events`, `wake`
-- Token-Refresh-Mechanismus
-- Konfiguration über `.env` Datei
+- CLI scripts:
+  - `start_auth_flow.py` - OAuth authentication
+  - `brew_espresso.py` - Start espresso
+  - `device_status.py` - Get device status
+  - `events.py` - Monitor event stream
+  - `wake_device.py` - Activate device
+- Makefile with targets: `init`, `auth`, `brew`, `status`, `events`, `wake`
+- Token refresh mechanism
+- Configuration via `.env` file
 
 ### Changed
 
-- Event-Stream-Worker läuft kontinuierlich für Event-Persistierung
-- Dashboard verwendet Event-Stream statt periodischem Polling
-- History-Speicherung von JSON zu SQLite migriert
-- API-Call-Monitoring für besseres Rate-Limit-Management
+- Event stream worker runs continuously for event persistence
+- Dashboard uses event stream instead of periodic polling
+- History storage migrated from JSON to SQLite
+- API call monitoring for better rate limit management
 
 ### Fixed
 
-- Server-Blocking-Problem durch Umstellung auf ThreadingHTTPServer
-- Event-Parsing für Programm-Events korrigiert
-- Tägliche Nutzung-Berechnung mit korrekter Monatsübergang-Behandlung
-- Token-Refresh-Race-Conditions durch Lock-Mechanismus behoben
-- BrokenPipeError bei SSE-Client-Disconnects abgefangen
+- Server blocking problem resolved by switching to ThreadingHTTPServer
+- Event parsing for program events corrected
+- Daily usage calculation with correct month transition handling
+- Token refresh race conditions fixed with lock mechanism
+- BrokenPipeError on SSE client disconnects caught
 
 ### Security
 
-- Token-Maskierung in Logs implementiert
-- SSL/TLS für sichere Verbindungen
-- Token-basierte Authentifizierung für geschützte Endpoints
-- Secrets in `.env` und `tokens.json` (nicht in Git)
+- Token masking in logs implemented
+- SSL/TLS for secure connections
+- Token-based authentication for protected endpoints
+- Secrets in `.env` and `tokens.json` (not in Git)
 
 [Unreleased]: https://github.com/pommes/HomeConnectCoffee/compare/v1.1.0...HEAD
 [1.1.0]: https://github.com/pommes/HomeConnectCoffee/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/pommes/HomeConnectCoffee/compare/9448183...d2b9420
-

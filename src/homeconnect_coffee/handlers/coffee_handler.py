@@ -1,4 +1,4 @@
-"""Handler für Coffee-Operationen (Wake, Brew)."""
+"""Handler for coffee operations (Wake, Brew)."""
 
 from __future__ import annotations
 
@@ -15,21 +15,21 @@ if TYPE_CHECKING:
 
 
 class CoffeeHandler:
-    """Handler für Coffee-Operationen: Wake und Brew.
+    """Handler for coffee operations: Wake and Brew.
     
-    Handler-Methoden sind statisch und nehmen den Router als Parameter.
+    Handler methods are static and take the router as a parameter.
     """
 
     @staticmethod
     def handle_wake(router: "BaseHandler", auth_middleware: "AuthMiddleware | None" = None) -> None:
-        """Aktiviert das Gerät aus dem Standby.
+        """Activates the device from standby.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            auth_middleware: Optional AuthMiddleware für Authentifizierung. 
-                           Wenn None, wird router._require_auth() verwendet (Legacy).
+            router: The router (BaseHandler instance) with request context
+            auth_middleware: Optional AuthMiddleware for authentication. 
+                           If None, router._require_auth() is used (legacy).
         """
-        # Verwende Middleware falls vorhanden, sonst Legacy-Methode
+        # Use middleware if present, otherwise legacy method
         if auth_middleware:
             if not auth_middleware.require_auth(router):
                 return
@@ -43,19 +43,19 @@ class CoffeeHandler:
             result = coffee_service.wake_device()
             router._send_json(result, status_code=200)
         except Exception as e:
-            CoffeeHandler._handle_error(router, e, "Fehler beim Aktivieren")
+            CoffeeHandler._handle_error(router, e, "Error activating device")
 
     @staticmethod
     def handle_brew(router: "BaseHandler", fill_ml: int, auth_middleware: "AuthMiddleware | None" = None) -> None:
-        """Startet einen Espresso.
+        """Starts an espresso.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            fill_ml: Füllmenge in Millilitern
-            auth_middleware: Optional AuthMiddleware für Authentifizierung.
-                           Wenn None, wird router._require_auth() verwendet (Legacy).
+            router: The router (BaseHandler instance) with request context
+            fill_ml: Fill amount in milliliters
+            auth_middleware: Optional AuthMiddleware for authentication.
+                           If None, router._require_auth() is used (legacy).
         """
-        # Verwende Middleware falls vorhanden, sonst Legacy-Methode
+        # Use middleware if present, otherwise legacy method
         if auth_middleware:
             if not auth_middleware.require_auth(router):
                 return
@@ -69,16 +69,16 @@ class CoffeeHandler:
             result = coffee_service.brew_espresso(fill_ml)
             router._send_json(result, status_code=200)
         except Exception as e:
-            CoffeeHandler._handle_error(router, e, "Fehler beim Starten des Programms")
+            CoffeeHandler._handle_error(router, e, "Error starting program")
 
     @staticmethod
     def _handle_error(router: "BaseHandler", exception: Exception, default_message: str) -> None:
-        """Behandelt einen Fehler und sendet entsprechende Response.
+        """Handles an error and sends appropriate response.
         
         Args:
-            router: Der Router (BaseHandler-Instanz) mit Request-Kontext
-            exception: Die aufgetretene Exception
-            default_message: Standard-Fehlermeldung
+            router: The router (BaseHandler instance) with request context
+            exception: The exception that occurred
+            default_message: Default error message
         """
         if router.error_handler:
             code, response = router.error_handler.handle_error(exception, default_message=default_message)

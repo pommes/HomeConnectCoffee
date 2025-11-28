@@ -9,14 +9,14 @@ from typing import Any, Dict, List, Optional
 
 
 class HistoryManager:
-    """Verwaltet Verlaufsdaten für das Dashboard mit SQLite."""
+    """Manages history data for the dashboard with SQLite."""
 
     def __init__(self, history_path: Path) -> None:
-        """Initialisiert den HistoryManager mit SQLite-Datenbank.
+        """Initializes the HistoryManager with SQLite database.
         
-        Falls history.json existiert, wird automatisch migriert.
+        If history.json exists, it will be automatically migrated.
         """
-        # Konvertiere .json Pfad zu .db Pfad
+        # Convert .json path to .db path
         if history_path.suffix == ".json":
             self.db_path = history_path.with_suffix(".db")
             self.json_path = history_path
@@ -24,14 +24,14 @@ class HistoryManager:
             self.db_path = history_path
             self.json_path = history_path.with_suffix(".json")
         
-        self._lock = Lock()  # Lock für Thread-sichere Zugriffe
+        self._lock = Lock()  # Lock for thread-safe access
         self._ensure_database()
         
-        # Automatische Migration von JSON zu SQLite
+        # Automatic migration from JSON to SQLite
         self._migrate_from_json_if_needed()
 
     def _ensure_database(self) -> None:
-        """Stellt sicher, dass die SQLite-Datenbank existiert und das Schema erstellt ist."""
+        """Ensures that the SQLite database exists and the schema is created."""
         with self._lock:
             if not self.db_path.exists():
                 self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +39,7 @@ class HistoryManager:
             conn = sqlite3.connect(str(self.db_path))
             try:
                 cursor = conn.cursor()
-                # Erstelle Events-Tabelle
+                # Create events table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +48,7 @@ class HistoryManager:
                         data TEXT NOT NULL
                     )
                 """)
-                # Erstelle Indizes für bessere Performance
+                # Create indexes for better performance
                 cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)
                 """)
@@ -60,33 +60,33 @@ class HistoryManager:
                 conn.close()
 
     def _migrate_from_json_if_needed(self) -> None:
-        """Migriert Events von history.json zu history.db, falls JSON existiert und DB leer ist."""
+        """Migrates events from history.json to history.db if JSON exists and DB is empty."""
         if not self.json_path.exists():
-            return  # Keine JSON-Datei vorhanden
+            return  # No JSON file present
         
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
             try:
                 cursor = conn.cursor()
-                # Prüfe ob DB bereits Events enthält
+                # Check if DB already contains events
                 cursor.execute("SELECT COUNT(*) FROM events")
                 count = cursor.fetchone()[0]
                 
                 if count > 0:
-                    # DB enthält bereits Events, keine Migration nötig
+                    # DB already contains events, no migration needed
                     return
                 
-                # Lade Events aus JSON
+                # Load events from JSON
                 try:
                     with open(self.json_path, "r", encoding="utf-8") as f:
                         json_events = json.load(f)
                 except (json.JSONDecodeError, FileNotFoundError):
-                    return  # JSON ist beschädigt oder nicht lesbar
+                    return  # JSON is corrupted or not readable
                 
                 if not json_events:
-                    return  # JSON ist leer
+                    return  # JSON is empty
                 
-                # Importiere Events in SQLite
+                # Import events into SQLite
                 imported = 0
                 for event in json_events:
                     try:
@@ -100,20 +100,20 @@ class HistoryManager:
                         )
                         imported += 1
                     except Exception as e:
-                        print(f"WARNUNG: Fehler beim Importieren eines Events: {e}")
+                        print(f"WARNING: Error importing event: {e}")
                         continue
                 
                 conn.commit()
                 
                 if imported > 0:
-                    # Benenne JSON-Datei zu Backup um
+                    # Rename JSON file to backup
                     backup_path = self.json_path.with_suffix(".json.backup")
                     try:
                         self.json_path.rename(backup_path)
-                        print(f"✓ {imported} Events von {self.json_path.name} nach {self.db_path.name} migriert")
-                        print(f"  Original-JSON gesichert als {backup_path.name}")
+                        print(f"✓ {imported} events migrated from {self.json_path.name} to {self.db_path.name}")
+                        print(f"  Original JSON backed up as {backup_path.name}")
                     except Exception as e:
-                        print(f"WARNUNG: Konnte JSON nicht zu Backup umbenennen: {e}")
+                        print(f"WARNING: Could not rename JSON to backup: {e}")
             finally:
                 conn.close()
 
@@ -123,7 +123,7 @@ class HistoryManager:
         data: Dict[str, Any],
         timestamp: Optional[datetime] = None,
     ) -> None:
-        """Fügt ein Event zur History hinzu."""
+        """Adds an event to the history."""
         try:
             if timestamp is None:
                 timestamp = datetime.now(timezone.utc)
@@ -143,8 +143,8 @@ class HistoryManager:
                 finally:
                     conn.close()
         except Exception as e:
-            # Fehler beim Speichern nicht weiterwerfen, aber loggen
-            print(f"WARNUNG: Fehler beim Speichern von Event in History: {e}")
+            # Don't propagate save errors, but log them
+            print(f"WARNING: Error saving event to history: {e}")
 
     def get_history(
         self, 
@@ -152,16 +152,16 @@ class HistoryManager:
         limit: Optional[int] = None,
         before_timestamp: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Gibt die History zurück, optional gefiltert nach Event-Typ.
+        """Returns the history, optionally filtered by event type.
         
         Args:
-            event_type: Optionaler Filter für Event-Typ
-            limit: Maximale Anzahl Events (wenn gesetzt, werden die letzten N Events zurückgegeben)
-            before_timestamp: ISO 8601 Timestamp - gibt nur Events zurück, die vor diesem Zeitpunkt liegen
-                            (für Cursor-basierte Pagination)
+            event_type: Optional filter for event type
+            limit: Maximum number of events (if set, returns the last N events)
+            before_timestamp: ISO 8601 timestamp - only returns events before this time
+                            (for cursor-based pagination)
         
         Returns:
-            Liste von Events, chronologisch sortiert (älteste zuerst)
+            List of events, chronologically sorted (oldest first)
         """
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
@@ -183,8 +183,8 @@ class HistoryManager:
                 if conditions:
                     query += " WHERE " + " AND ".join(conditions)
                 
-                # Cursor-basierte Pagination: Events vor before_timestamp, absteigend sortiert
-                # Dann umkehren für chronologische Reihenfolge (älteste zuerst)
+                # Cursor-based pagination: events before before_timestamp, sorted descending
+                # Then reverse for chronological order (oldest first)
                 if before_timestamp:
                     query += " ORDER BY timestamp DESC"
                     if limit:
@@ -192,18 +192,18 @@ class HistoryManager:
                         params.append(limit)
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
-                    # Reihenfolge umkehren für chronologische Reihenfolge (älteste zuerst)
+                    # Reverse order for chronological order (oldest first)
                     rows = list(reversed(rows))
                 elif limit:
-                    # Ohne before_timestamp: Neueste Events zuerst, dann umkehren
+                    # Without before_timestamp: newest events first, then reverse
                     query += " ORDER BY timestamp DESC LIMIT ?"
                     params.append(limit)
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
-                    # Reihenfolge umkehren für chronologische Reihenfolge (älteste zuerst)
+                    # Reverse order for chronological order (oldest first)
                     rows = list(reversed(rows))
                 else:
-                    # Alle Events chronologisch
+                    # All events chronologically
                     query += " ORDER BY timestamp ASC"
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
@@ -226,27 +226,27 @@ class HistoryManager:
                 conn.close()
 
     def get_program_history(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Gibt die Programm-Historie zurück."""
+        """Returns the program history."""
         return self.get_history("program_started", limit)
 
     def get_status_changes(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Gibt Status-Änderungen zurück."""
+        """Returns status changes."""
         return self.get_history("status_changed", limit)
 
     def get_daily_usage(self, days: int = 7) -> Dict[str, int]:
-        """Gibt die tägliche Nutzung der letzten N Tage zurück."""
+        """Returns the daily usage of the last N days."""
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
             try:
                 cursor = conn.cursor()
                 
-                # Berechne Cutoff-Datum
+                # Calculate cutoff date
                 cutoff_date = datetime.now(timezone.utc).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 ) - timedelta(days=days)
                 cutoff_str = cutoff_date.isoformat()
                 
-                # Query für program_started Events mit Datum-Filterung
+                # Query for program_started events with date filtering
                 query = """
                     SELECT timestamp, data
                     FROM events
@@ -259,7 +259,7 @@ class HistoryManager:
                 
                 daily_counts: Dict[str, int] = {}
                 
-                # Erstelle Liste der letzten 'days' Tage
+                # Create list of last 'days' days
                 today = datetime.now(timezone.utc).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 )
@@ -279,7 +279,7 @@ class HistoryManager:
                     except (KeyError, ValueError):
                         continue
                 
-                # Fülle fehlende Tage mit 0 auf
+                # Fill missing days with 0
                 full_daily_counts = {
                     date_key: daily_counts.get(date_key, 0) for date_key in date_keys_in_range
                 }
@@ -289,7 +289,7 @@ class HistoryManager:
                 conn.close()
 
     def get_program_counts(self) -> Dict[str, int]:
-        """Gibt die Anzahl der Nutzung pro Programm zurück."""
+        """Returns the usage count per program."""
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
             try:

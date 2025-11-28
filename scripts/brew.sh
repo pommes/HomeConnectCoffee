@@ -1,11 +1,11 @@
 #!/bin/bash
-# Shell-Script zum Starten eines Espressos
-# Kann in Siri Shortcuts verwendet werden
+# Shell script to start an espresso
+# Can be used in Siri Shortcuts
 
 cd "$(dirname "$0")/.." || exit 1
 
-# Optionale Parameter
-FILL_ML=${1:-50}  # Standard: 50 ml
+# Optional parameters
+FILL_ML=${1:-50}  # Default: 50 ml
 
 make brew FILL_ML="$FILL_ML"
 

@@ -1,4 +1,4 @@
-"""Middleware-Module für HTTP-Handler."""
+"""Middleware module for HTTP handlers."""
 
 from .auth_middleware import AuthMiddleware
 

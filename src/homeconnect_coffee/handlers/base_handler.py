@@ -1,4 +1,4 @@
-"""Base-Handler für gemeinsame Funktionalität."""
+"""Base handler for common functionality."""
 
 from __future__ import annotations
 
@@ -9,16 +9,16 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..errors import ErrorCode, ErrorHandler
 
-# Logger für Handler
+# Logger for handlers
 logger = logging.getLogger(__name__)
 
 
 class BaseHandler(BaseHTTPRequestHandler):
-    """Basis-Klasse für alle HTTP-Handler mit gemeinsamer Funktionalität.
+    """Base class for all HTTP handlers with common functionality.
     
-    Diese Klasse wird als Router verwendet und stellt gemeinsame Funktionalität
-    für alle Handler-Methoden bereit. Handler-Methoden sind statisch und nehmen
-    den Router (BaseHandler-Instanz) als Parameter.
+    This class is used as a router and provides common functionality
+    for all handler methods. Handler methods are static and take
+    the router (BaseHandler instance) as a parameter.
     """
 
     enable_logging = True
@@ -26,15 +26,15 @@ class BaseHandler(BaseHTTPRequestHandler):
     error_handler: ErrorHandler | None = None
 
     def handle_one_request(self):
-        """Überschreibt handle_one_request, um BrokenPipeError abzufangen."""
+        """Overrides handle_one_request to catch BrokenPipeError."""
         try:
             super().handle_one_request()
         except (BrokenPipeError, ConnectionResetError, OSError):
-            # Client hat Verbindung geschlossen - normal, nicht loggen
+            # Client closed connection - normal, don't log
             pass
 
     def log_request(self, code="-", size="-"):
-        """Loggt Requests wenn Logging aktiviert ist."""
+        """Logs requests when logging is enabled."""
         if self.enable_logging:
             client_ip = self.client_address[0]
             method = self.command
@@ -42,13 +42,13 @@ class BaseHandler(BaseHTTPRequestHandler):
             logger.info(f"{client_ip} - {method} {path} - {code}")
 
     def _mask_token_in_path(self, path: str) -> str:
-        """Maskiert Token-Parameter im Pfad für das Logging.
+        """Masks token parameters in the path for logging.
         
         Args:
-            path: Der Pfad mit möglichem Token-Parameter
+            path: The path with possible token parameter
             
         Returns:
-            Pfad mit maskiertem Token
+            Path with masked token
         """
         if "token=" not in path:
             return path
@@ -57,7 +57,7 @@ class BaseHandler(BaseHTTPRequestHandler):
         query_params = parse_qs(parsed.query)
         
         if "token" in query_params:
-            # Maskiere Token
+            # Mask token
             query_params["token"] = ["__MASKED__"]
             new_query = urlencode(query_params, doseq=True)
             return f"{parsed.path}?{new_query}"
@@ -65,22 +65,22 @@ class BaseHandler(BaseHTTPRequestHandler):
         return path
 
     def _check_auth(self) -> bool:
-        """Prüft die Authentifizierung via Header oder Query-Parameter.
+        """Checks authentication via header or query parameter.
         
         Returns:
-            True wenn authentifiziert, False sonst
+            True if authenticated, False otherwise
         """
         if self.api_token is None:
-            return True  # Kein Token konfiguriert = offen
+            return True  # No token configured = open
 
-        # Prüfe Authorization Header
+        # Check Authorization header
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
             if token == self.api_token:
                 return True
 
-        # Prüfe Query-Parameter
+        # Check query parameter
         parsed_path = urlparse(self.path)
         query_params = parse_qs(parsed_path.query)
         token_param = query_params.get("token", [None])[0]
@@ -90,10 +90,10 @@ class BaseHandler(BaseHTTPRequestHandler):
         return False
 
     def _require_auth(self) -> bool:
-        """Prüft Authentifizierung und sendet 401 bei Fehler.
+        """Checks authentication and sends 401 on error.
         
         Returns:
-            True wenn authentifiziert, False wenn 401 gesendet wurde
+            True if authenticated, False if 401 was sent
         """
         if not self._check_auth():
             if self.error_handler:
@@ -109,11 +109,11 @@ class BaseHandler(BaseHTTPRequestHandler):
         return True
 
     def _send_json(self, data: dict, status_code: int = 200) -> None:
-        """Sendet eine JSON-Response.
+        """Sends a JSON response.
         
         Args:
-            data: Die JSON-Daten
-            status_code: HTTP-Status-Code
+            data: The JSON data
+            status_code: HTTP status code
         """
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
@@ -121,24 +121,24 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.end_headers()
         response_body = json.dumps(data, indent=2).encode("utf-8")
         self.wfile.write(response_body)
-        # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
+        # log_request is automatically called by BaseHTTPRequestHandler
 
     def _send_error(self, code: int, message: str) -> None:
-        """Sendet eine Fehler-Response (Legacy-Methode, für Rückwärtskompatibilität).
+        """Sends an error response (legacy method, for backward compatibility).
         
         Args:
-            code: HTTP-Status-Code
-            message: Fehlermeldung
+            code: HTTP status code
+            message: Error message
         """
         response = {"error": message, "code": code}
         self._send_error_response(code, response)
 
     def _send_error_response(self, code: int, response: dict) -> None:
-        """Sendet eine Fehler-Response im konsistenten Format.
+        """Sends an error response in a consistent format.
         
         Args:
-            code: HTTP-Status-Code
-            response: Error-Response-Dict
+            code: HTTP status code
+            response: Error response dict
         """
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -146,20 +146,20 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.end_headers()
         error_body = json.dumps(response, indent=2).encode("utf-8")
         self.wfile.write(error_body)
-        # log_request wird automatisch von BaseHTTPRequestHandler aufgerufen
+        # log_request is automatically called by BaseHTTPRequestHandler
 
     def _parse_path(self) -> tuple[str, dict]:
-        """Parst den Request-Pfad und Query-Parameter.
+        """Parses the request path and query parameters.
         
         Returns:
-            Tuple von (Pfad, Query-Parameter-Dict)
+            Tuple of (path, query parameters dict)
         """
         parsed_path = urlparse(self.path)
         query_params = parse_qs(parsed_path.query)
         return parsed_path.path, query_params
 
     def _send_not_found(self) -> None:
-        """Sendet 404 Not Found Response."""
+        """Sends 404 Not Found response."""
         if self.error_handler:
             response = self.error_handler.create_error_response(
                 ErrorCode.NOT_FOUND,
@@ -171,6 +171,6 @@ class BaseHandler(BaseHTTPRequestHandler):
             self._send_error(404, "Not Found")
 
     def log_message(self, format, *args):
-        """Unterdrückt Standard-Logging-Nachrichten (nur log_request wird verwendet)."""
+        """Suppresses standard logging messages (only log_request is used)."""
         pass
 

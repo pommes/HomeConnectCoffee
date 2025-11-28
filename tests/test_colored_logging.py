@@ -1,4 +1,4 @@
-"""Tests für ColoredFormatter."""
+"""Tests for ColoredFormatter."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from homeconnect_coffee.errors import ColoredFormatter
 
 @pytest.mark.unit
 class TestColoredFormatter:
-    """Tests für ColoredFormatter Klasse."""
+    """Tests for ColoredFormatter class."""
 
     def test_format_info_no_color(self):
-        """Test dass INFO keine Farben hat."""
+        """Test that INFO has no colors."""
         formatter = ColoredFormatter(
             fmt='%(levelname)s - %(message)s'
         )
@@ -35,12 +35,12 @@ class TestColoredFormatter:
         
         result = formatter.format(record)
         assert "Test message" in result
-        # INFO sollte keine Farben haben
+        # INFO should have no colors
         assert "\033[0m" not in result or result.count("\033[0m") == 0
 
     def test_format_warning_with_color_when_enabled(self):
-        """Test dass WARNING orange ist, wenn Farben aktiviert sind."""
-        # Simuliere Terminal mit Farben
+        """Test that WARNING is orange when colors are enabled."""
+        # Simulate terminal with colors
         with patch('sys.stdout.isatty', return_value=True), \
              patch.dict(os.environ, {}, clear=False):
             
@@ -61,16 +61,16 @@ class TestColoredFormatter:
             result = formatter.format(record)
             
             if formatter._use_colors:
-                # Sollte orange enthalten
+                # Should contain orange
                 assert "\033[38;5;208m" in result or "\033[0m" in result
                 assert "Warning message" in result
             else:
-                # Keine Farben wenn deaktiviert
+                # No colors when disabled
                 assert "Warning message" in result
 
     def test_format_error_with_color_when_enabled(self):
-        """Test dass ERROR rot ist, wenn Farben aktiviert sind."""
-        # Simuliere Terminal mit Farben
+        """Test that ERROR is red when colors are enabled."""
+        # Simulate terminal with colors
         with patch('sys.stdout.isatty', return_value=True), \
              patch.dict(os.environ, {}, clear=False):
             
@@ -91,15 +91,15 @@ class TestColoredFormatter:
             result = formatter.format(record)
             
             if formatter._use_colors:
-                # Sollte rot enthalten
+                # Should contain red
                 assert "\033[31m" in result or "\033[0m" in result
                 assert "Error message" in result
             else:
-                # Keine Farben wenn deaktiviert
+                # No colors when disabled
                 assert "Error message" in result
 
     def test_no_color_when_no_color_env_set(self):
-        """Test dass Farben deaktiviert sind, wenn NO_COLOR gesetzt ist."""
+        """Test that colors are disabled when NO_COLOR is set."""
         with patch('sys.stdout.isatty', return_value=True), \
              patch.dict(os.environ, {"NO_COLOR": "1"}):
             
@@ -110,7 +110,7 @@ class TestColoredFormatter:
             assert formatter._use_colors is False
 
     def test_no_color_when_not_tty(self):
-        """Test dass Farben deaktiviert sind, wenn nicht TTY."""
+        """Test that colors are disabled when not TTY."""
         with patch('sys.stdout.isatty', return_value=False):
             
             formatter = ColoredFormatter(
@@ -120,7 +120,7 @@ class TestColoredFormatter:
             assert formatter._use_colors is False
 
     def test_no_color_when_term_dumb(self):
-        """Test dass Farben deaktiviert sind, wenn TERM=dumb."""
+        """Test that colors are disabled when TERM=dumb."""
         with patch('sys.stdout.isatty', return_value=True), \
              patch.dict(os.environ, {"TERM": "dumb"}):
             

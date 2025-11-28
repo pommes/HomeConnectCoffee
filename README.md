@@ -1,379 +1,379 @@
-# HomeConnect Coffee Steuerung
+# HomeConnect Coffee Control
 
-Dieses Projekt zeigt, wie du deine Bosch CTL7181B0 (und andere HomeConnect-Kaffeemaschinen) per Python-Skript über die offizielle HomeConnect-Cloud-API starten kannst.
+This project demonstrates how to start your Bosch CTL7181B0 (and other HomeConnect coffee machines) via Python script using the official HomeConnect Cloud API.
 
-## Voraussetzungen
+## Prerequisites
 
-1. **HomeConnect-Entwicklerkonto** auf [developer.home-connect.com](https://developer.home-connect.com)
-2. **OAuth-Client** (Typ *Server Application*) mit Redirect-URL `http://localhost:3000/callback` oder ähnlich
-3. **Gerät verknüpft** (über die HomeConnect-App)
+1. **HomeConnect Developer Account** at [developer.home-connect.com](https://developer.home-connect.com)
+2. **OAuth Client** (Type *Server Application*) with Redirect URL `http://localhost:3000/callback` or similar
+3. **Device linked** (via the HomeConnect app)
 4. Python 3.11+
 
-## Einrichtung
+## Setup
 
-### 1. Application bei Home Connect registrieren
+### 1. Register Application with Home Connect
 
-1. Gehe zu [developer.home-connect.com/applications](https://developer.home-connect.com/applications)
-2. Klicke auf **"Register Application"** oder **"New Application"**
-3. Fülle das Formular aus:
-   - **Application ID**: z.B. "HomeConnect Coffee Control"
-   - **OAuth Flow**: Wähle **"Authorization Code Grant flow"** (nicht "Device Flow")
-   - **Home Connect User Account for Testing**: **Leer lassen** – Wenn du den Account in deinem Profil gesetzt hast (E-Mail-Adresse), wird dieser automatisch verwendet. Nur ausfüllen, wenn du einen anderen Test-Account für diese spezifische Application verwenden möchtest.
+1. Go to [developer.home-connect.com/applications](https://developer.home-connect.com/applications)
+2. Click **"Register Application"** or **"New Application"**
+3. Fill out the form:
+   - **Application ID**: e.g., "HomeConnect Coffee Control"
+   - **OAuth Flow**: Select **"Authorization Code Grant flow"** (not "Device Flow")
+   - **Home Connect User Account for Testing**: **Leave empty** – If you have set the account in your profile (email address), it will be used automatically. Only fill this in if you want to use a different test account for this specific application.
    - **Redirect URI**: `http://localhost:3000/callback`
-   - **Scopes**: Werden beim Auth-Flow angefordert (nicht bei der Registrierung) – siehe `.env` Datei
-   - **Add additional redirect URIs**: Optional – nur aktivieren, wenn du mehrere Redirect URIs benötigst (z.B. für verschiedene Umgebungen)
-   - **Enable One Time Token Mode**: **NICHT aktivieren** – Diese Option würde verhindern, dass Refresh Tokens mehrfach verwendet werden können. Das Projekt nutzt Refresh Tokens automatisch zur Token-Erneuerung.
-   - **Sync to China**: Nur aktivieren, wenn du die Application in China verwenden möchtest
+   - **Scopes**: Requested during the Auth flow (not during registration) – see `.env` file
+   - **Add additional redirect URIs**: Optional – only enable if you need multiple redirect URIs (e.g., for different environments)
+   - **Enable One Time Token Mode**: **DO NOT enable** – This option would prevent refresh tokens from being used multiple times. The project uses refresh tokens automatically for token renewal.
+   - **Sync to China**: Only enable if you want to use the application in China
    
-   **Hinweis:** Der Application Type wird automatisch basierend auf dem gewählten OAuth Flow bestimmt (bei Authorization Code Grant ist das "Server Application").
-4. Nach dem Speichern erhältst du:
-   - **Client ID** (sichtbar in der Übersicht)
-   - **Client Secret** (wird nur einmal angezeigt – **sofort kopieren und sicher speichern!**)
+   **Note:** The Application Type is automatically determined based on the selected OAuth Flow (for Authorization Code Grant, this is "Server Application").
+4. After saving, you will receive:
+   - **Client ID** (visible in the overview)
+   - **Client Secret** (displayed only once – **copy immediately and store securely!**)
 
-### 2. Lokale Umgebung einrichten
+### 2. Set up local environment
 
 ```bash
 cd /path/to/HomeConnectCoffee
-make init  # oder manuell: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+make init  # or manually: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 ```
 
-### 3. .env Datei erstellen und ausfüllen
+### 3. Create and fill .env file
 
-Erstelle eine `.env` Datei im Projektverzeichnis mit folgendem Inhalt:
+Create a `.env` file in the project directory with the following content:
 
 ```bash
-HOME_CONNECT_CLIENT_ID=deine-client-id-hier
-HOME_CONNECT_CLIENT_SECRET=dein-client-secret-hier
+HOME_CONNECT_CLIENT_ID=your-client-id-here
+HOME_CONNECT_CLIENT_SECRET=your-client-secret-here
 HOME_CONNECT_REDIRECT_URI=http://localhost:3000/callback
 HOME_CONNECT_HAID=
 HOME_CONNECT_SCOPE=IdentifyAppliance Control CoffeeMaker Settings Monitor
 ```
 
-**Wichtig:**
-- Trage die **Client ID** und das **Client Secret** aus Schritt 1 ein (aus der Application-Übersicht kopieren)
-- Die **HAID** (Home Appliance ID) lässt du zunächst leer – diese findest du nach dem ersten Auth-Flow heraus (siehe nächster Schritt)
-- Die **Redirect URI** muss exakt mit der in der Application-Registrierung übereinstimmen
-- Die **Scopes** werden beim Auth-Flow angefordert (nicht bei der Application-Registrierung). Die hier angegebenen Scopes werden in der Authorization-URL verwendet.
+**Important:**
+- Enter the **Client ID** and **Client Secret** from step 1 (copy from the application overview)
+- Leave the **HAID** (Home Appliance ID) empty initially – you can find this after the first Auth flow (see next step)
+- The **Redirect URI** must exactly match the one in the application registration
+- **Scopes** are requested during the Auth flow (not during application registration). The scopes specified here are used in the authorization URL.
 
-### 4. HAID herausfinden (nach erstem Auth-Flow)
+### 4. Find HAID (after first Auth flow)
 
-Die HAID findest du nach erfolgreicher Authentifizierung:
+You can find the HAID after successful authentication:
 
-1. Führe den Auth-Flow aus (siehe nächster Abschnitt)
-2. Danach kannst du mit `make status` oder `python -m scripts.device_status` alle registrierten Geräte anzeigen
-3. Die HAID steht im JSON-Output unter `data.homeappliances[].haid`
-4. Trage diese HAID in deine `.env` Datei ein
+1. Run the Auth flow (see next section)
+2. After that, you can display all registered devices with `make status` or `python -m scripts.device_status`
+3. The HAID is in the JSON output under `data.homeappliances[].haid`
+4. Enter this HAID in your `.env` file
 
-## Autorisierung anstoßen
+## Start Authorization
 
 ```bash
 make auth
 ```
 
-oder
+or
 
 ```bash
 make auth AUTH_ARGS="--open-browser"
 ```
 
-Der Befehl öffnet (bzw. zeigt) die Authorize-URL. Nach Login erhältst du einen `code`, den du ins Terminal kopierst. Das Skript speichert `tokens.json` mit Access- und Refresh-Token.
+The command opens (or displays) the authorize URL. After login, you will receive a `code` that you copy into the terminal. The script saves `tokens.json` with access and refresh tokens.
 
-**Tipp:** Mit `--open-browser` öffnet sich der Browser automatisch. Mit `--code "DEIN_CODE"` kannst du den Code direkt als Argument übergeben.
+**Tip:** With `--open-browser`, the browser opens automatically. With `--code "YOUR_CODE"`, you can pass the code directly as an argument.
 
-## Gerät aktivieren
+## Activate Device
 
-Wenn das Gerät im Standby-Modus ist, kannst du es per API aktivieren:
+If the device is in standby mode, you can activate it via API:
 
 ```bash
 make wake
 ```
 
-Das Skript prüft den PowerState und aktiviert das Gerät automatisch, falls es im Standby ist.
+The script checks the PowerState and automatically activates the device if it is in standby.
 
-## Espresso starten
+## Start Espresso
 
-Das `make brew` Kommando aktiviert das Gerät automatisch aus dem Standby (falls nötig), wählt das Espresso-Programm aus und startet es.
+The `make brew` command automatically activates the device from standby (if necessary), selects the espresso program, and starts it.
 
-### Standard-Espresso (50 ml)
+### Standard Espresso (50 ml)
 
 ```bash
 make brew
 ```
 
-### Individuelle Füllmenge
+### Custom Fill Amount
 
-Die Füllmenge kann zwischen 35-50 ml gewählt werden:
+The fill amount can be chosen between 35-50 ml:
 
 ```bash
 make brew FILL_ML=40
 ```
 
-oder
+or
 
 ```bash
 make brew FILL_ML=50
 ```
 
-### Mit Status-Überwachung
+### With Status Monitoring
 
-Um den Status während der Zubereitung zu überwachen:
+To monitor the status during preparation:
 
 ```bash
 make brew BREW_ARGS="--poll"
 ```
 
-### Kombinierte Optionen
+### Combined Options
 
 ```bash
-# 45 ml mit Status-Überwachung
+# 45 ml with status monitoring
 make brew FILL_ML=45 BREW_ARGS="--poll"
 ```
 
-### Direktes Python-Skript
+### Direct Python Script
 
-Alternativ kannst du das Skript auch direkt aufrufen:
+Alternatively, you can also call the script directly:
 
 ```bash
 python -m scripts.brew_espresso --fill-ml 50 --poll
 ```
 
-**Hinweis:** Das Skript aktiviert das Gerät automatisch aus dem Standby, falls nötig. Die Füllmenge muss zwischen 35-50 ml liegen (gerätespezifische Einschränkung).
+**Note:** The script automatically activates the device from standby if necessary. The fill amount must be between 35-50 ml (device-specific limitation).
 
-## Verfügbare Makefile-Kommandos
+## Available Makefile Commands
 
-| Kommando | Beschreibung |
-|----------|--------------|
-| `make init` | Richtet die virtuelle Umgebung ein und installiert Dependencies |
-| `make auth` | Startet den OAuth-Flow zur Authentifizierung |
-| `make wake` | Aktiviert das Gerät aus dem Standby-Modus |
-| `make status` | Zeigt alle registrierten Geräte und den aktuellen Status |
-| `make brew` | Startet einen Espresso (aktiviert Gerät automatisch) |
-| `make events` | Überwacht den Event-Stream in Echtzeit |
-| `make server` | Startet HTTP-Server für Siri Shortcuts Integration |
-| `make cert` | Erstellt selbstsigniertes SSL-Zertifikat |
-| `make cert_install` | Installiert Zertifikat im Mac Schlüsselbund |
-| `make cert_export` | Öffnet Finder mit Zertifikat für AirDrop-Transfer |
-| `make clean_tokens` | Löscht die gespeicherten Tokens |
+| Command | Description |
+|---------|-------------|
+| `make init` | Sets up the virtual environment and installs dependencies |
+| `make auth` | Starts the OAuth flow for authentication |
+| `make wake` | Activates the device from standby mode |
+| `make status` | Shows all registered devices and current status |
+| `make brew` | Starts an espresso (automatically activates device) |
+| `make events` | Monitors the event stream in real-time |
+| `make server` | Starts HTTP server for Siri Shortcuts integration |
+| `make cert` | Creates self-signed SSL certificate |
+| `make cert_install` | Installs certificate in Mac keychain |
+| `make cert_export` | Opens Finder with certificate for AirDrop transfer |
+| `make clean_tokens` | Deletes the stored tokens |
 
-### Beispiele
+### Examples
 
 ```bash
-# Gerät aktivieren
+# Activate device
 make wake
 
-# Status abrufen
+# Get status
 make status
 
-# Espresso mit Standard-Einstellungen (50 ml)
+# Espresso with default settings (50 ml)
 make brew
 
-# Espresso mit individueller Menge
+# Espresso with custom amount
 make brew FILL_ML=40
 
-# Espresso mit Status-Überwachung
+# Espresso with status monitoring
 make brew BREW_ARGS="--poll"
 
-# Events überwachen (bricht nach 10 Events ab)
+# Monitor events (stops after 10 events)
 make events EVENTS_LIMIT=10
 ```
 
 ## Siri Shortcuts Integration
 
-Du kannst die Kaffeemaschine auch per Siri Shortcut steuern! Dafür stehen Shell-Scripts zur Verfügung:
+You can also control the coffee machine via Siri Shortcut! Shell scripts are available for this:
 
-### Gerät aktivieren
+### Activate Device
 
-1. Öffne die **Shortcuts App** auf deinem iPhone/iPad/Mac
-2. Erstelle einen neuen Shortcut
-3. Füge eine **"Shell-Script ausführen"** Aktion hinzu
-4. Wähle als Script:
+1. Open the **Shortcuts App** on your iPhone/iPad/Mac
+2. Create a new shortcut
+3. Add a **"Run Shell Script"** action
+4. Select as script:
    ```bash
    /path/to/HomeConnectCoffee/scripts/wake.sh
    ```
-5. Benenne den Shortcut z.B. "Kaffeemaschine aktivieren"
-6. Aktiviere **"Mit Siri verwenden"** und wähle einen Spruch wie "Kaffeemaschine aktivieren"
+5. Name the shortcut e.g., "Activate Coffee Machine"
+6. Enable **"Use with Siri"** and choose a phrase like "Activate coffee machine"
 
-### Espresso starten
+### Start Espresso
 
-1. Erstelle einen neuen Shortcut
-2. Füge eine **"Shell-Script ausführen"** Aktion hinzu
-3. Wähle als Script:
+1. Create a new shortcut
+2. Add a **"Run Shell Script"** action
+3. Select as script:
    ```bash
    /path/to/HomeConnectCoffee/scripts/brew.sh
    ```
-   Oder mit individueller Menge:
+   Or with custom amount:
    ```bash
    /path/to/HomeConnectCoffee/scripts/brew.sh 40
    ```
-4. Benenne den Shortcut z.B. "Espresso machen"
-5. Aktiviere **"Mit Siri verwenden"** und wähle einen Spruch wie "Mach mir einen Espresso"
+4. Name the shortcut e.g., "Make Espresso"
+5. Enable **"Use with Siri"** and choose a phrase like "Make me an espresso"
 
-**Hinweis:** Die Shell-Scripts funktionieren am besten auf macOS. Für iOS/iPadOS siehe HTTP-Server Option unten.
+**Note:** The shell scripts work best on macOS. For iOS/iPadOS, see HTTP server option below.
 
-### HTTP-Server für iOS/iPadOS (empfohlen)
+### HTTP Server for iOS/iPadOS (recommended)
 
-Für iOS/iPadOS ist ein HTTP-Server die bessere Lösung:
+For iOS/iPadOS, an HTTP server is the better solution:
 
-1. **Starte den Server auf deinem Mac:**
+1. **Start the server on your Mac:**
    ```bash
    make server
    ```
-   Der Server läuft standardmäßig auf `http://localhost:8080`
+   The server runs by default on `http://localhost:8080`
 
-2. **Für Zugriff von iOS/iPadOS:** Starte den Server mit deiner Mac-IP-Adresse:
+2. **For access from iOS/iPadOS:** Start the server with your Mac IP address:
    ```bash
    make server SERVER_ARGS="--host 0.0.0.0 --port 8080"
    ```
-   Finde deine Mac-IP-Adresse mit: `ifconfig | grep "inet "`
+   Find your Mac IP address with: `ifconfig | grep "inet "`
 
-3. **Mit Authentifizierung und TLS:**
+3. **With authentication and TLS:**
    ```bash
-   make server SERVER_ARGS="--host 0.0.0.0 --port 8080 --api-token mein-token --cert certs/server.crt --key certs/server.key"
+   make server SERVER_ARGS="--host 0.0.0.0 --port 8080 --api-token my-token --cert certs/server.crt --key certs/server.key"
    ```
 
-4. **Logging deaktivieren:** Wenn du keine Request-Logs sehen möchtest:
+4. **Disable logging:** If you don't want to see request logs:
    ```bash
    make server SERVER_ARGS="--no-log"
    ```
-   Standardmäßig ist Logging aktiviert und zeigt alle Requests mit Zeitstempel, IP-Adresse, Methode, Pfad und Status-Code. **Token werden im Log automatisch maskiert** (als `***` angezeigt).
+   By default, logging is enabled and shows all requests with timestamp, IP address, method, path, and status code. **Tokens are automatically masked in the log** (shown as `***`).
 
-### SSL/TLS Zertifikat erstellen
+### Create SSL/TLS Certificate
 
-Für HTTPS benötigst du ein SSL-Zertifikat:
+For HTTPS, you need an SSL certificate:
 
 ```bash
-# Zertifikat erstellen
+# Create certificate
 make cert
 
-# Zertifikat im Mac Schlüsselbund installieren (für vertrauenswürdige Verbindungen)
+# Install certificate in Mac keychain (for trusted connections)
 make cert_install
 ```
 
-Das Zertifikat wird im `certs/` Verzeichnis erstellt und ist für `localhost` und `*.local` gültig. Optional kann ein spezifischer Hostname hinzugefügt werden (siehe Makefile).
+The certificate is created in the `certs/` directory and is valid for `localhost` and `*.local`. Optionally, a specific hostname can be added (see Makefile).
 
-### Zertifikat auf iOS installieren
+### Install Certificate on iOS
 
-Für die Verwendung mit Apple Shortcuts auf iOS/iPadOS musst du das Zertifikat auf deinem Gerät installieren. Es gibt zwei Methoden:
+For use with Apple Shortcuts on iOS/iPadOS, you must install the certificate on your device. There are two methods:
 
-#### Methode 1: AirDrop (empfohlen)
+#### Method 1: AirDrop (recommended)
 
-1. **Zertifikat für AirDrop vorbereiten:**
+1. **Prepare certificate for AirDrop:**
    ```bash
    make cert_export
    ```
-   Dies öffnet den Finder mit dem Zertifikat.
+   This opens Finder with the certificate.
 
-2. **Per AirDrop senden:**
-   - Wähle die Datei `server.crt` im Finder aus
-   - Rechtsklick → Teilen → AirDrop
-   - Wähle dein iOS-Gerät aus
+2. **Send via AirDrop:**
+   - Select the `server.crt` file in Finder
+   - Right-click → Share → AirDrop
+   - Select your iOS device
 
-3. **Auf iOS installieren:**
-   - Öffne die Datei auf dem iOS-Gerät
-   - Tippe auf "Installieren"
-   - Gehe zu **Einstellungen → Allgemein → VPN & Geräteverwaltung**
-   - Tippe auf "HomeConnect Coffee" (unter "Zertifikat")
-   - Tippe auf "Installieren" und bestätige
+3. **Install on iOS:**
+   - Open the file on the iOS device
+   - Tap "Install"
+   - Go to **Settings → General → VPN & Device Management**
+   - Tap "HomeConnect Coffee" (under "Certificate")
+   - Tap "Install" and confirm
 
-4. **WICHTIG - Zertifikat als vertrauenswürdig markieren:**
-   - Gehe zu **Einstellungen → Allgemein → Info**
-   - Scrolle nach unten zu **Zertifikatvertrauenseinstellungen**
-   - **Aktiviere den Schalter** bei "HomeConnect Coffee" unter "Root-Zertifikate" (muss grün sein!)
-   - Bestätige die Warnung mit "Vertrauen"
+4. **IMPORTANT - Mark certificate as trusted:**
+   - Go to **Settings → General → About**
+   - Scroll down to **Certificate Trust Settings**
+   - **Enable the switch** for "HomeConnect Coffee" under "Root Certificates" (must be green!)
+   - Confirm the warning with "Trust"
    
-   **Ohne diesen Schritt funktioniert das Zertifikat nicht, auch wenn es installiert ist!**
+   **Without this step, the certificate will not work, even if it is installed!**
 
-#### Methode 2: Download über Browser
+#### Method 2: Download via Browser
 
-1. **Server starten** (falls noch nicht gestartet):
+1. **Start server** (if not already started):
    ```bash
    make server SERVER_ARGS="--host 0.0.0.0 --port 8080 --cert certs/server.crt --key certs/server.key"
    ```
 
-2. **Zertifikat auf iOS herunterladen:**
-   - Öffne Safari auf deinem iOS-Gerät
-   - Navigiere zu: `https://DEINE_MAC_IP:8080/cert` (z.B. `https://dein-hostname.local:8080/cert`)
-   - **Wichtig:** Bei der Warnung "Ungültiges Zertifikat" tippe auf "Erweitert" → "Trotzdem fortfahren"
-   - Das Zertifikat wird heruntergeladen
+2. **Download certificate on iOS:**
+   - Open Safari on your iOS device
+   - Navigate to: `https://YOUR_MAC_IP:8080/cert` (e.g., `https://your-hostname.local:8080/cert`)
+   - **Important:** When the "Invalid Certificate" warning appears, tap "Advanced" → "Continue Anyway"
+   - The certificate will be downloaded
 
-3. **Zertifikat installieren:**
-   - Öffne die heruntergeladene Datei
-   - Tippe auf "Installieren"
-   - Gehe zu **Einstellungen → Allgemein → VPN & Geräteverwaltung**
-   - Tippe auf "HomeConnect Coffee" (unter "Zertifikat")
-   - Tippe auf "Installieren" und bestätige
+3. **Install certificate:**
+   - Open the downloaded file
+   - Tap "Install"
+   - Go to **Settings → General → VPN & Device Management**
+   - Tap "HomeConnect Coffee" (under "Certificate")
+   - Tap "Install" and confirm
 
-4. **WICHTIG - Zertifikat als vertrauenswürdig markieren:**
-   - Gehe zu **Einstellungen → Allgemein → Über**
-   - Scrolle nach unten zu **Zertifikatvertrauenseinstellungen**
-   - **Aktiviere den Schalter** bei "HomeConnect Coffee" unter "Root-Zertifikate" (muss grün sein!)
-   - Bestätige die Warnung mit "Vertrauen"
+4. **IMPORTANT - Mark certificate as trusted:**
+   - Go to **Settings → General → About**
+   - Scroll down to **Certificate Trust Settings**
+   - **Enable the switch** for "HomeConnect Coffee" under "Root Certificates" (must be green!)
+   - Confirm the warning with "Trust"
    
-   **Ohne diesen Schritt funktioniert das Zertifikat nicht, auch wenn es installiert ist!**
+   **Without this step, the certificate will not work, even if it is installed!**
 
-### Authentifizierung
+### Authentication
 
-Der Server unterstützt Token-basierte Authentifizierung:
+The server supports token-based authentication:
 
-**Option 1: Bearer Token im Header**
+**Option 1: Bearer Token in Header**
 ```bash
-curl -H "Authorization: Bearer mein-token" https://dein-hostname.local:8080/wake
+curl -H "Authorization: Bearer my-token" https://your-hostname.local:8080/wake
 ```
 
-**Option 2: Token als URL-Parameter**
+**Option 2: Token as URL Parameter**
 ```bash
-curl https://dein-hostname.local:8080/wake?token=mein-token
+curl https://your-hostname.local:8080/wake?token=my-token
 ```
 
-**Hinweis:** Token in URL-Parametern werden im Log automatisch als `***` maskiert.
+**Note:** Tokens in URL parameters are automatically masked in the log as `***`.
 
-**Token setzen:**
-- Als Kommandozeilen-Argument: `--api-token mein-token`
-- Oder als Umgebungsvariable: `COFFEE_API_TOKEN=mein-token`
+**Set token:**
+- As command-line argument: `--api-token my-token`
+- Or as environment variable: `COFFEE_API_TOKEN=my-token`
 
-3. **Erstelle Shortcuts in der Shortcuts App:**
+3. **Create shortcuts in the Shortcuts App:**
 
-   **Wake (Gerät aktivieren) - mit Token:**
-   - Füge eine **"URL abrufen"** Aktion hinzu
-   - URL: `https://DEINE_MAC_IP:8080/wake?token=DEIN_TOKEN`
-   - Oder mit Header: Füge **"Header anfordern"** hinzu mit `Authorization: Bearer DEIN_TOKEN`
-   - Aktiviere **"Mit Siri verwenden"**
+   **Wake (Activate Device) - with token:**
+   - Add a **"Get Contents of URL"** action
+   - URL: `https://YOUR_MAC_IP:8080/wake?token=YOUR_TOKEN`
+   - Or with header: Add **"Get Headers"** with `Authorization: Bearer YOUR_TOKEN`
+   - Enable **"Use with Siri"**
 
-   **Brew (Espresso starten) - mit Token:**
-   - Füge eine **"URL abrufen"** Aktion hinzu
-   - Methode: **POST**
-   - URL: `https://DEINE_MAC_IP:8080/brew?token=DEIN_TOKEN`
+   **Brew (Start Espresso) - with token:**
+   - Add a **"Get Contents of URL"** action
+   - Method: **POST**
+   - URL: `https://YOUR_MAC_IP:8080/brew?token=YOUR_TOKEN`
    - Request Body: JSON
-   - Body-Inhalt: `{"fill_ml": 50}`
-   - Oder mit Header: Füge **"Header anfordern"** hinzu mit `Authorization: Bearer DEIN_TOKEN`
-   - Aktiviere **"Mit Siri verwenden"`
+   - Body content: `{"fill_ml": 50}`
+   - Or with header: Add **"Get Headers"** with `Authorization: Bearer YOUR_TOKEN`
+   - Enable **"Use with Siri"`
 
-   **WICHTIG - Zertifikat auf iOS:**
-   - Das Zertifikat muss auf dem iOS-Gerät installiert sein (siehe "Zertifikat auf iOS installieren" oben)
-   - **Zusätzlich** musst du das Zertifikat als vertrauenswürdig markieren:
-     - **Einstellungen → Allgemein → Info → Zertifikatvertrauenseinstellungen**
-     - **Aktiviere den Schalter** bei "HomeConnect Coffee" (muss grün sein!)
-   - Ohne diesen Schritt funktioniert das Zertifikat nicht, auch wenn es installiert ist!
+   **IMPORTANT - Certificate on iOS:**
+   - The certificate must be installed on the iOS device (see "Install Certificate on iOS" above)
+   - **Additionally**, you must mark the certificate as trusted:
+     - **Settings → General → About → Certificate Trust Settings**
+     - **Enable the switch** for "HomeConnect Coffee" (must be green!)
+   - Without this step, the certificate will not work, even if it is installed!
 
-**Verfügbare Endpoints:**
-- `GET /cert` - Download SSL-Zertifikat (öffentlich, keine Authentifizierung)
-- `GET /wake` - Aktiviert das Gerät
-- `GET /status` - Zeigt den Gerätestatus
-- `POST /brew` - Startet einen Espresso (JSON: `{"fill_ml": 50}`)
-- `GET /health` - Health-Check
+**Available Endpoints:**
+- `GET /cert` - Download SSL certificate (public, no authentication)
+- `GET /wake` - Activates the device
+- `GET /status` - Shows the device status
+- `POST /brew` - Starts an espresso (JSON: `{"fill_ml": 50}`)
+- `GET /health` - Health check
 
-## Weitere Ideen
+## Further Ideas
 
-- `scripts/device_status.py` zeigt alle verfügbaren Programme/Optionen
-- `scripts/events.py` öffnet den SSE-Eventstream (Monitoring)
-- Integration in Home Assistant oder Shortcut möglich, solange Token gültig sind.
+- `scripts/device_status.py` shows all available programs/options
+- `scripts/events.py` opens the SSE event stream (monitoring)
+- Integration into Home Assistant or Shortcut possible as long as tokens are valid.
 
-## Sicherheit
+## Security
 
-HomeConnect lässt aktuell keinen direkten Offline-Zugriff im Heimnetz zu. Alle Befehle laufen über die Bosch-Cloud. Schütze deine Client-Secret-Dateien und Tokens entsprechend.
+HomeConnect currently does not allow direct offline access on the home network. All commands run through the Bosch Cloud. Protect your client secret files and tokens accordingly.
 
-## Ressourcen
+## Resources
 
-- [API-Dokumentation](https://developer.home-connect.com/docs)
-- [Programmliste Kaffeemaschine](https://developer.home-connect.com/docs/programs_and_options)
-- [Beispiel Postman Collection](https://developer.home-connect.com/docs/postman)
+- [API Documentation](https://developer.home-connect.com/docs)
+- [Coffee Machine Program List](https://developer.home-connect.com/docs/programs_and_options)
+- [Example Postman Collection](https://developer.home-connect.com/docs/postman)

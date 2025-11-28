@@ -18,34 +18,34 @@ def build_options(fill_ml: int | None, strength: str | None) -> list[dict[str, o
     options: list[dict[str, object]] = []
     if fill_ml is not None:
         options.append({"key": FILL_OPTION, "value": fill_ml})
-    # BeanAmount wird weggelassen, da die Werte gerätespezifisch sind
-    # und möglicherweise nicht "Mild", "Normal", "Strong" sind
+    # BeanAmount is omitted because values are device-specific
+    # and may not be "Mild", "Normal", "Strong"
     # if strength is not None:
     #     options.append({"key": STRONG_OPTION, "value": strength})
     return options
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Startet einen Espresso über die HomeConnect API")
-    parser.add_argument("--fill-ml", type=int, default=50, help="Füllmenge in ml (35-50 ml für Espresso)")
+    parser = argparse.ArgumentParser(description="Starts an espresso via the HomeConnect API")
+    parser.add_argument("--fill-ml", type=int, default=50, help="Fill amount in ml (35-50 ml for espresso)")
     parser.add_argument(
         "--strength",
         choices=["Mild", "Normal", "Strong"],
         default=None,
-        help="Bohnenmenge/Stärke (aktuell deaktiviert - gerätespezifische Werte erforderlich)",
+        help="Bean amount/strength (currently disabled - device-specific values required)",
     )
     parser.add_argument(
         "--poll",
         action="store_true",
-        help="Status nach dem Start abfragen",
+        help="Query status after start",
     )
     args = parser.parse_args()
 
     config = load_config()
     client = HomeConnectClient(config)
 
-    # Prüfe PowerState und aktiviere Gerät falls nötig
-    print("[bold]Prüfe Gerätestatus...[/bold]")
+    # Check PowerState and activate device if necessary
+    print("[bold]Checking device status...[/bold]")
     try:
         settings = client.get_settings()
         power_state = None
@@ -55,22 +55,22 @@ def main() -> None:
                 break
         
         if power_state == "BSH.Common.EnumType.PowerState.Standby":
-            print("[yellow]Gerät ist im Standby, aktiviere...[/yellow]")
+            print("[yellow]Device is in standby, activating...[/yellow]")
             client.set_setting("BSH.Common.Setting.PowerState", "BSH.Common.EnumType.PowerState.On")
-            sleep(2)  # Kurz warten, bis das Gerät aktiviert ist
+            sleep(2)  # Wait briefly until device is activated
     except Exception as e:
-        print(f"[yellow]Konnte PowerState nicht prüfen/setzen: {e}[/yellow]")
-        # Weiter versuchen, vielleicht ist das Gerät schon aktiv
+        print(f"[yellow]Could not check/set PowerState: {e}[/yellow]")
+        # Continue trying, device might already be active
 
     options = build_options(args.fill_ml, args.strength)
     
-    # Zuerst eventuell vorhandenes ausgewähltes Programm löschen
+    # First clear any existing selected program
     try:
         client.clear_selected_program()
     except Exception:
-        pass  # Ignoriere Fehler, falls kein Programm ausgewählt ist
+        pass  # Ignore errors if no program is selected
     
-    print("[bold]Programm auswählen...[/bold]")
+    print("[bold]Selecting program...[/bold]")
     max_retries = 5
     for attempt in range(max_retries):
         try:
@@ -78,16 +78,16 @@ def main() -> None:
             break
         except RuntimeError as e:
             if "WrongOperationState" in str(e) and attempt < max_retries - 1:
-                print(f"[yellow]Gerät noch nicht bereit, warte 2 Sekunden... (Versuch {attempt + 1}/{max_retries})[/yellow]")
+                print(f"[yellow]Device not ready yet, waiting 2 seconds... (Attempt {attempt + 1}/{max_retries})[/yellow]")
                 sleep(2)
             else:
                 raise
 
-    print("[bold green]Espresso wird gestartet...[/bold green]")
+    print("[bold green]Starting espresso...[/bold green]")
     client.start_program()
 
     if args.poll:
-        print("Statusabfrage... (bricht nach 30s ab)")
+        print("Querying status... (aborts after 30s)")
         for _ in range(6):
             status = client.get_status()
             print(json.dumps(status, indent=2))

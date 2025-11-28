@@ -24,3 +24,5 @@ htmlcov/
 # SQLite Session-Dateien
 *.session.sql
 
+# Security documentation (contains sensitive information)
+SECURITY.md

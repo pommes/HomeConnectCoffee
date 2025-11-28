@@ -12,7 +12,7 @@ def main() -> None:
     config = load_config()
     client = HomeConnectClient(config)
 
-    print("[bold]Prüfe Gerätestatus...[/bold]")
+    print("[bold]Checking device status...[/bold]")
     try:
         settings = client.get_settings()
         power_state = None
@@ -22,16 +22,16 @@ def main() -> None:
                 break
 
         if power_state == "BSH.Common.EnumType.PowerState.Standby":
-            print("[yellow]Gerät ist im Standby, aktiviere...[/yellow]")
+            print("[yellow]Device is in standby, activating...[/yellow]")
             client.set_setting("BSH.Common.Setting.PowerState", "BSH.Common.EnumType.PowerState.On")
-            sleep(2)  # Kurz warten, bis das Gerät aktiviert ist
-            print("[bold green]Gerät aktiviert![/bold green]")
+            sleep(2)  # Wait briefly for device to activate
+            print("[bold green]Device activated![/bold green]")
         elif power_state == "BSH.Common.EnumType.PowerState.On":
-            print("[green]Gerät ist bereits aktiviert.[/green]")
+            print("[green]Device is already activated.[/green]")
         else:
-            print(f"[yellow]Unbekannter PowerState: {power_state}[/yellow]")
+            print(f"[yellow]Unknown PowerState: {power_state}[/yellow]")
     except Exception as e:
-        print(f"[red]Fehler beim Aktivieren: {e}[/red]")
+        print(f"[red]Error activating device: {e}[/red]")
         raise
 
 

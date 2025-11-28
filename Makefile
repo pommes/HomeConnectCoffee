@@ -54,8 +54,8 @@ clean_tokens:
 CERT_DIR := $(THIS_DIR)/certs
 CERT_FILE := $(CERT_DIR)/server.crt
 KEY_FILE := $(CERT_DIR)/server.key
-# Optional: Spezifischer Hostname für das Zertifikat (wird aus .env geladen, falls vorhanden)
-# Kann auch als Make-Variable überschrieben werden: make cert CERT_HOSTNAME=mein-hostname.local
+# Optional: Specific hostname for the certificate (loaded from .env if present)
+# Can also be overridden as Make variable: make cert CERT_HOSTNAME=my-hostname.local
 CERT_HOSTNAME ?= $(shell grep -E '^CERT_HOSTNAME=' $(THIS_DIR)/.env 2>/dev/null | cut -d '=' -f2- || echo "")
 
 cert: $(CERT_FILE) $(KEY_FILE)
@@ -64,9 +64,9 @@ $(CERT_DIR):
 	mkdir -p $(CERT_DIR)
 
 $(CERT_FILE) $(KEY_FILE): $(CERT_DIR)
-	@echo "Erstelle selbstsigniertes Zertifikat..."
+	@echo "Creating self-signed certificate..."
 	@if [ -n "$(CERT_HOSTNAME)" ]; then \
-		echo "Füge Hostname $(CERT_HOSTNAME) zum Zertifikat hinzu..."; \
+		echo "Adding hostname $(CERT_HOSTNAME) to certificate..."; \
 		openssl req -x509 -newkey rsa:4096 -keyout $(KEY_FILE) -out $(CERT_FILE) \
 			-days 3650 -nodes -subj "/CN=HomeConnectCoffee/O=HomeConnect Coffee/C=DE" \
 			-addext "subjectAltName=DNS:localhost,DNS:*.local,DNS:$(CERT_HOSTNAME),IP:127.0.0.1"; \
@@ -77,43 +77,43 @@ $(CERT_FILE) $(KEY_FILE): $(CERT_DIR)
 	fi
 	@chmod 600 $(KEY_FILE)
 	@chmod 644 $(CERT_FILE)
-	@echo "Zertifikat erstellt: $(CERT_FILE)"
-	@echo "Private Key erstellt: $(KEY_FILE)"
+	@echo "Certificate created: $(CERT_FILE)"
+	@echo "Private key created: $(KEY_FILE)"
 
 cert_install: $(CERT_FILE)
-	@echo "Installiere Zertifikat im Mac Schlüsselbund..."
+	@echo "Installing certificate in Mac keychain..."
 	security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db $(CERT_FILE) || \
 	security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain $(CERT_FILE) || \
 	security add-trusted-cert -d -r trustRoot $(CERT_FILE)
-	@echo "Zertifikat wurde im Schlüsselbund installiert."
+	@echo "Certificate has been installed in keychain."
 
 cert_export: $(CERT_FILE)
-	@echo "Öffne Finder mit Zertifikat für AirDrop..."
+	@echo "Opening Finder with certificate for AirDrop..."
 	@open -R $(CERT_FILE)
-	@echo "Zertifikat-Datei wurde im Finder geöffnet."
-	@echo "Du kannst es jetzt per AirDrop zu deinem iOS-Gerät senden."
+	@echo "Certificate file has been opened in Finder."
+	@echo "You can now send it to your iOS device via AirDrop."
 
 fix_history:
-	@echo "Verarbeite vorhandene Events in der History..."
+	@echo "Processing existing events in history..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/fix_history.py
 
 migrate_history: init
-	@echo "Migriere Events von history.json zu history.db..."
+	@echo "Migrating events from history.json to history.db..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/migrate_to_sqlite.py
 
 export_history: init
-	@echo "Exportiere Events von history.db zu history.json..."
+	@echo "Exporting events from history.db to history.json..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/export_to_json.py
 
 test: init
-	@echo "Führe Tests aus..."
+	@echo "Running tests..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest
 
 test-unit: init
-	@echo "Führe Unit-Tests aus..."
+	@echo "Running unit tests..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest -m unit
 
 test-cov: init
-	@echo "Führe Tests mit Coverage-Report aus..."
+	@echo "Running tests with coverage report..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest --cov=src/homeconnect_coffee --cov-report=term-missing --cov-report=html
 

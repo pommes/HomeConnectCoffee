@@ -30,7 +30,7 @@ def load_config() -> HomeConnectConfig:
     missing: list[str] = [var for var in REQUIRED_VARS if not os.getenv(var)]
     if missing:
         missing_fmt = ", ".join(missing)
-        raise RuntimeError(f"Fehlende Umgebungsvariablen: {missing_fmt}")
+        raise RuntimeError(f"Missing environment variables: {missing_fmt}")
 
     scope = os.getenv(
         "HOME_CONNECT_SCOPE",
