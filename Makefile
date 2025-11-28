@@ -54,6 +54,9 @@ clean_tokens:
 CERT_DIR := $(THIS_DIR)/certs
 CERT_FILE := $(CERT_DIR)/server.crt
 KEY_FILE := $(CERT_DIR)/server.key
+# Optional: Spezifischer Hostname für das Zertifikat (wird aus .env geladen, falls vorhanden)
+# Kann auch als Make-Variable überschrieben werden: make cert CERT_HOSTNAME=mein-hostname.local
+CERT_HOSTNAME ?= $(shell grep -E '^CERT_HOSTNAME=' $(THIS_DIR)/.env 2>/dev/null | cut -d '=' -f2- || echo "")
 
 cert: $(CERT_FILE) $(KEY_FILE)
 
@@ -62,9 +65,16 @@ $(CERT_DIR):
 
 $(CERT_FILE) $(KEY_FILE): $(CERT_DIR)
 	@echo "Erstelle selbstsigniertes Zertifikat..."
-	openssl req -x509 -newkey rsa:4096 -keyout $(KEY_FILE) -out $(CERT_FILE) \
-		-days 3650 -nodes -subj "/CN=HomeConnectCoffee/O=HomeConnect Coffee/C=DE" \
-		-addext "subjectAltName=DNS:localhost,DNS:*.local,DNS:elias.local,IP:127.0.0.1"
+	@if [ -n "$(CERT_HOSTNAME)" ]; then \
+		echo "Füge Hostname $(CERT_HOSTNAME) zum Zertifikat hinzu..."; \
+		openssl req -x509 -newkey rsa:4096 -keyout $(KEY_FILE) -out $(CERT_FILE) \
+			-days 3650 -nodes -subj "/CN=HomeConnectCoffee/O=HomeConnect Coffee/C=DE" \
+			-addext "subjectAltName=DNS:localhost,DNS:*.local,DNS:$(CERT_HOSTNAME),IP:127.0.0.1"; \
+	else \
+		openssl req -x509 -newkey rsa:4096 -keyout $(KEY_FILE) -out $(CERT_FILE) \
+			-days 3650 -nodes -subj "/CN=HomeConnectCoffee/O=HomeConnect Coffee/C=DE" \
+			-addext "subjectAltName=DNS:localhost,DNS:*.local,IP:127.0.0.1"; \
+	fi
 	@chmod 600 $(KEY_FILE)
 	@chmod 644 $(CERT_FILE)
 	@echo "Zertifikat erstellt: $(CERT_FILE)"

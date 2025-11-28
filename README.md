@@ -33,7 +33,7 @@ Dieses Projekt zeigt, wie du deine Bosch CTL7181B0 (und andere HomeConnect-Kaffe
 ### 2. Lokale Umgebung einrichten
 
 ```bash
-cd /Users/tim/Development/HomeConnectCoffee
+cd /path/to/HomeConnectCoffee
 make init  # oder manuell: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 ```
 
@@ -188,7 +188,7 @@ Du kannst die Kaffeemaschine auch per Siri Shortcut steuern! Dafür stehen Shell
 3. Füge eine **"Shell-Script ausführen"** Aktion hinzu
 4. Wähle als Script:
    ```bash
-   /Users/tim/Development/HomeConnectCoffee/scripts/wake.sh
+   /path/to/HomeConnectCoffee/scripts/wake.sh
    ```
 5. Benenne den Shortcut z.B. "Kaffeemaschine aktivieren"
 6. Aktiviere **"Mit Siri verwenden"** und wähle einen Spruch wie "Kaffeemaschine aktivieren"
@@ -199,11 +199,11 @@ Du kannst die Kaffeemaschine auch per Siri Shortcut steuern! Dafür stehen Shell
 2. Füge eine **"Shell-Script ausführen"** Aktion hinzu
 3. Wähle als Script:
    ```bash
-   /Users/tim/Development/HomeConnectCoffee/scripts/brew.sh
+   /path/to/HomeConnectCoffee/scripts/brew.sh
    ```
    Oder mit individueller Menge:
    ```bash
-   /Users/tim/Development/HomeConnectCoffee/scripts/brew.sh 40
+   /path/to/HomeConnectCoffee/scripts/brew.sh 40
    ```
 4. Benenne den Shortcut z.B. "Espresso machen"
 5. Aktiviere **"Mit Siri verwenden"** und wähle einen Spruch wie "Mach mir einen Espresso"
@@ -249,7 +249,7 @@ make cert
 make cert_install
 ```
 
-Das Zertifikat wird im `certs/` Verzeichnis erstellt und ist für `localhost`, `*.local` und explizit `elias.local` gültig.
+Das Zertifikat wird im `certs/` Verzeichnis erstellt und ist für `localhost` und `*.local` gültig. Optional kann ein spezifischer Hostname hinzugefügt werden (siehe Makefile).
 
 ### Zertifikat auf iOS installieren
 
@@ -292,7 +292,7 @@ Für die Verwendung mit Apple Shortcuts auf iOS/iPadOS musst du das Zertifikat a
 
 2. **Zertifikat auf iOS herunterladen:**
    - Öffne Safari auf deinem iOS-Gerät
-   - Navigiere zu: `https://DEINE_MAC_IP:8080/cert` (z.B. `https://elias.local:8080/cert`)
+   - Navigiere zu: `https://DEINE_MAC_IP:8080/cert` (z.B. `https://dein-hostname.local:8080/cert`)
    - **Wichtig:** Bei der Warnung "Ungültiges Zertifikat" tippe auf "Erweitert" → "Trotzdem fortfahren"
    - Das Zertifikat wird heruntergeladen
 
@@ -317,12 +317,12 @@ Der Server unterstützt Token-basierte Authentifizierung:
 
 **Option 1: Bearer Token im Header**
 ```bash
-curl -H "Authorization: Bearer mein-token" https://elias.local:8080/wake
+curl -H "Authorization: Bearer mein-token" https://dein-hostname.local:8080/wake
 ```
 
 **Option 2: Token als URL-Parameter**
 ```bash
-curl https://elias.local:8080/wake?token=mein-token
+curl https://dein-hostname.local:8080/wake?token=mein-token
 ```
 
 **Hinweis:** Token in URL-Parametern werden im Log automatisch als `***` maskiert.

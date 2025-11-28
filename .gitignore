@@ -11,9 +11,16 @@ history.db-*
 api_stats.json
 # Test-Coverage
 .coverage
+coverage.xml
 htmlcov/
 .pytest_cache/
 .tox/
 *.cover
 .hypothesis/
+
+# IDE
+.vscode/
+
+# SQLite Session-Dateien
+*.session.sql
 
