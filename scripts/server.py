@@ -16,32 +16,27 @@ import ssl
 import threading
 import time
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from queue import Queue
-from threading import Lock
 from urllib.parse import urlparse, parse_qs, urlencode
 
 import requests
-from sseclient import SSEClient
 
 from homeconnect_coffee.api_monitor import get_monitor
 from homeconnect_coffee.client import HomeConnectClient
 from homeconnect_coffee.config import load_config
 from homeconnect_coffee.history import HistoryManager
-from homeconnect_coffee.services import CoffeeService, HistoryService, StatusService
+from homeconnect_coffee.services import (
+    CoffeeService,
+    EventStreamManager,
+    HistoryService,
+    StatusService,
+)
 
 
-# Globale Variablen für Events-Stream
-EVENTS_URL = "https://api.home-connect.com/api/homeappliances/events"
-event_clients: list[BaseHTTPRequestHandler] = []
-event_clients_lock = Lock()
+# Globale Variablen (werden in main() initialisiert)
 history_manager: HistoryManager | None = None
-event_stream_thread: threading.Thread | None = None
-event_stream_running = False  # Flag, ob Worker läuft
-event_stream_stop_event = threading.Event()  # Event zum Stoppen des Workers
-history_queue: Queue = Queue()
-history_worker_thread: threading.Thread | None = None
+event_stream_manager: EventStreamManager | None = None
 
 
 class CoffeeHandler(BaseHTTPRequestHandler):
@@ -333,6 +328,12 @@ class CoffeeHandler(BaseHTTPRequestHandler):
         Erstellt KEINEN Client, um Blockierungen zu vermeiden.
         Der Event-Stream-Worker liefert die Events im Hintergrund.
         """
+        global event_stream_manager
+        
+        if event_stream_manager is None:
+            self._send_error(500, "Event-Stream-Manager nicht initialisiert")
+            return
+        
         # SSE-Header senden
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -341,9 +342,8 @@ class CoffeeHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        # Client zur Liste hinzufügen
-        with event_clients_lock:
-            event_clients.append(self)
+        # Client zum Manager hinzufügen
+        event_stream_manager.add_client(self)
 
         try:
             # Sende initiales Event
@@ -357,10 +357,8 @@ class CoffeeHandler(BaseHTTPRequestHandler):
             # Client hat Verbindung geschlossen
             pass
         finally:
-            # Client aus Liste entfernen
-            with event_clients_lock:
-                if self in event_clients:
-                    event_clients.remove(self)
+            # Client aus Manager entfernen
+            event_stream_manager.remove_client(self)
 
     def _send_sse_event(self, event_type: str, data: dict) -> None:
         """Sendet ein SSE-Event."""
@@ -409,223 +407,10 @@ class CoffeeHandler(BaseHTTPRequestHandler):
         pass
 
 
-def history_worker() -> None:
-    """Hintergrund-Thread, der Events aus der Queue speichert."""
-    global history_manager
-    
-    while True:
-        try:
-            # Warte auf Event in der Queue (blockierend, aber in separatem Thread)
-            event_type, data = history_queue.get(timeout=1)
-            
-            if history_manager:
-                try:
-                    history_manager.add_event(event_type, data)
-                except Exception as e:
-                    if CoffeeHandler.enable_logging:
-                        print(f"Fehler beim Speichern von Event in History: {e}")
-            
-            history_queue.task_done()
-        except Exception:
-            # Timeout oder anderer Fehler - einfach weiter
-            pass
-
-
-def event_stream_worker() -> None:
-    """Hintergrund-Thread, der den HomeConnect Events-Stream abhört.
-    
-    Läuft IMMER, um Events für die History zu sammeln.
-    Sendet Events nur an verbundene Clients (spart Ressourcen).
-    """
-    global history_manager, event_stream_running
-    
-    # Backoff-Variablen für Rate-Limiting
-    backoff_seconds = 60  # Start mit 60 Sekunden
-    max_backoff_seconds = 300  # Maximal 5 Minuten
-    consecutive_429_errors = 0
-
-    while not event_stream_stop_event.is_set():
-        try:
-            # Timeout für Config und Client-Erstellung - in try-except, damit Fehler nicht den Server blockieren
-            try:
-                config = load_config()
-                client = HomeConnectClient(config)
-                token = client.get_access_token()
-            except Exception as e:
-                if CoffeeHandler.enable_logging:
-                    print(f"Events-Stream Worker: Fehler beim Laden der Config: {e}")
-                time.sleep(10)  # Warte vor erneutem Versuch
-                continue
-                
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Accept": "text/event-stream",
-            }
-
-            if CoffeeHandler.enable_logging:
-                print("Events-Stream Worker: Verbinde mit HomeConnect Events...")
-
-            # SSEClient benötigt eine requests.Response, nicht direkt eine URL
-            # Timeout für Verbindung, aber None für Stream (läuft endlos)
-            try:
-                response = requests.get(
-                    EVENTS_URL,
-                    headers=headers,
-                    stream=True,
-                    timeout=(10, None)  # 10 Sekunden für Verbindung, None für Stream
-                )
-                response.raise_for_status()
-                
-                # Erfolgreiche Verbindung - Backoff zurücksetzen
-                if consecutive_429_errors > 0:
-                    if CoffeeHandler.enable_logging:
-                        print(f"Events-Stream Worker: Verbindung erfolgreich, Backoff zurückgesetzt")
-                    consecutive_429_errors = 0
-                    backoff_seconds = 60
-                    
-            except requests.exceptions.HTTPError as e:
-                # Spezielle Behandlung für 429 (Too Many Requests)
-                if e.response is not None and e.response.status_code == 429:
-                    consecutive_429_errors += 1
-                    if CoffeeHandler.enable_logging:
-                        print(f"Events-Stream Worker: Rate-Limit erreicht (429). Warte {backoff_seconds}s vor erneutem Versuch...")
-                    
-                    time.sleep(backoff_seconds)
-                    
-                    # Exponentielles Backoff: Verdopple Wartezeit, aber max. 5 Minuten
-                    backoff_seconds = min(backoff_seconds * 2, max_backoff_seconds)
-                    continue
-                else:
-                    # Andere HTTP-Fehler
-                    if CoffeeHandler.enable_logging:
-                        print(f"Events-Stream Worker: HTTP-Fehler: {e}")
-                    time.sleep(10)
-                    continue
-            except requests.exceptions.RequestException as e:
-                # Andere Verbindungsfehler (Timeout, ConnectionError, etc.)
-                if CoffeeHandler.enable_logging:
-                    print(f"Events-Stream Worker: Verbindungsfehler: {e}")
-                time.sleep(10)  # Normale Pause bei Verbindungsfehlern
-                continue
-
-            if CoffeeHandler.enable_logging:
-                print("Events-Stream Worker: Verbunden, warte auf Events...")
-
-            client = SSEClient(response)
-            for event in client.events():
-                if not event.data:
-                    continue
-
-                try:
-                    payload = json.loads(event.data)
-                    event_type = event.event or "message"
-
-                    # Alle Events für History speichern (asynchron über Queue)
-                    if history_manager:
-                        try:
-                            # Füge Event zur Queue hinzu (nicht-blockierend)
-                            history_queue.put_nowait((
-                                event_type.lower(),
-                                payload,
-                            ))
-                            
-                            # Zusätzlich spezielle Events für Statistiken
-                            if event_type == "STATUS":
-                                history_queue.put_nowait((
-                                    "status_changed",
-                                    {
-                                        "event": event_type,
-                                        "payload": payload,
-                                    },
-                                ))
-                            elif event_type in ("EVENT", "NOTIFY"):
-                                # Programm-Events speichern
-                                # Events haben Struktur: {"haId": "...", "items": [{"key": "...", "value": ...}]}
-                                items = payload.get("items", [])
-                                for item in items:
-                                    item_key = item.get("key")
-                                    item_value = item.get("value")
-                                    
-                                    # ActiveProgram Event: Wenn value nicht null ist, wurde ein Programm gestartet
-                                    if item_key == "BSH.Common.Root.ActiveProgram" and item_value:
-                                        # item_value ist ein Programm-Objekt mit "key" und "options"
-                                        if isinstance(item_value, dict):
-                                            history_queue.put_nowait((
-                                                "program_started",
-                                                {
-                                                    "program": item_value.get("key", "Unknown"),
-                                                    "options": item_value.get("options", []),
-                                                },
-                                            ))
-                        except Exception as e:
-                            # Fehler beim Hinzufügen zur Queue sollten den Stream nicht stoppen
-                            if CoffeeHandler.enable_logging:
-                                print(f"Fehler beim Hinzufügen von Event zur Queue: {e}")
-
-                    # Event an alle verbundenen Clients senden (nur wenn welche verbunden sind)
-                    with event_clients_lock:
-                        if event_clients:  # Nur senden, wenn Clients verbunden sind
-                            disconnected_clients = []
-                            for client_handler in event_clients:
-                                try:
-                                    client_handler._send_sse_event(event_type, payload)
-                                except (BrokenPipeError, ConnectionResetError, OSError):
-                                    # Client hat Verbindung geschlossen - normal, nicht loggen
-                                    disconnected_clients.append(client_handler)
-                            
-                            # Entferne getrennte Clients
-                            for client in disconnected_clients:
-                                if client in event_clients:
-                                    event_clients.remove(client)
-
-                except json.JSONDecodeError:
-                    # Nicht-JSON Event ignorieren
-                    pass
-                except Exception as e:
-                    if CoffeeHandler.enable_logging:
-                        print(f"Fehler beim Verarbeiten von Event: {e}")
-
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            if CoffeeHandler.enable_logging:
-                print(f"Fehler im Events-Stream: {e}")
-            time.sleep(5)  # Warte vor Reconnect
-    
-    event_stream_running = False
-    if CoffeeHandler.enable_logging:
-        print("Events-Stream Worker beendet.")
-
-
-def _start_event_stream_worker() -> None:
-    """Startet den Event-Stream-Worker, wenn noch nicht gestartet."""
-    global event_stream_thread, event_stream_running, event_stream_stop_event
-    
-    if event_stream_running:
-        return
-    
-    event_stream_stop_event.clear()
-    event_stream_running = True
-    event_stream_thread = threading.Thread(target=event_stream_worker, daemon=True)
-    event_stream_thread.start()
-    if CoffeeHandler.enable_logging:
-        print("Events-Stream Worker gestartet (Client verbunden)")
-
-
-def _stop_event_stream_worker() -> None:
-    """Stoppt den Event-Stream-Worker."""
-    global event_stream_running, event_stream_stop_event
-    
-    if not event_stream_running:
-        return
-    
-    event_stream_stop_event.set()
-    if CoffeeHandler.enable_logging:
-        print("Events-Stream Worker wird gestoppt (keine Clients mehr verbunden)")
 
 
 def main() -> None:
-    global history_manager, event_stream_thread, history_worker_thread
+    global history_manager, event_stream_manager
 
     parser = argparse.ArgumentParser(description="HTTP-Server für Siri Shortcuts Integration")
     parser.add_argument("--port", type=int, default=8080, help="Port für den HTTP-Server (Standard: 8080)")
@@ -665,14 +450,16 @@ def main() -> None:
     history_path = Path(__file__).parent.parent / "history.json"
     history_manager = HistoryManager(history_path)
 
+    # Event-Stream-Manager initialisieren
+    event_stream_manager = EventStreamManager(
+        history_manager=history_manager,
+        enable_logging=CoffeeHandler.enable_logging,
+    )
+
     # API-Call-Monitor initialisieren
     stats_path = Path(__file__).parent.parent / "api_stats.json"
     monitor = get_monitor(stats_path)
     monitor.print_stats()  # Zeige aktuelle Statistiken beim Start
-
-    # History-Worker Thread starten (für asynchrones Speichern)
-    history_worker_thread = threading.Thread(target=history_worker, daemon=True)
-    history_worker_thread.start()
 
     # ThreadingHTTPServer verwenden, damit mehrere Requests gleichzeitig verarbeitet werden können
     from http.server import ThreadingHTTPServer
@@ -713,23 +500,23 @@ def main() -> None:
         print(f"   - Authentifizierung: deaktiviert (Server ist offen!)")
     print(f"\n   Drücke Ctrl+C zum Beenden")
     
-    # Events-Stream Thread starten (NACH Server-Start, damit Server nicht blockiert)
+    # Events-Stream Manager starten (NACH Server-Start, damit Server nicht blockiert)
     # Worker läuft IMMER, um Events für die History zu sammeln
     # Sendet Events nur an verbundene Clients (spart Ressourcen)
-    def start_event_worker_delayed():
+    def start_event_manager_delayed():
         time.sleep(2)  # Warte 2 Sekunden, damit Server vollständig gestartet ist
-        global event_stream_thread
-        if CoffeeHandler.enable_logging:
-            print("Events-Stream Worker wird gestartet (für History-Persistierung)...")
-        _start_event_stream_worker()
+        if event_stream_manager:
+            event_stream_manager.start()
     
-    worker_starter = threading.Thread(target=start_event_worker_delayed, daemon=True)
-    worker_starter.start()
+    manager_starter = threading.Thread(target=start_event_manager_delayed, daemon=True)
+    manager_starter.start()
     
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nServer wird beendet...")
+        if event_stream_manager:
+            event_stream_manager.stop()
         server.shutdown()
 
 
