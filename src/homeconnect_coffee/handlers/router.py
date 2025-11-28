@@ -106,29 +106,29 @@ class RequestRouter(BaseHandler):
 
         # Coffee-Endpoints (benötigen Authentifizierung)
         if path == "/wake":
-            CoffeeHandler.handle_wake(self)
+            CoffeeHandler.handle_wake(self, self.auth_middleware)
             return
         elif path == "/brew":
             if self.command == "GET":
                 # Brew als GET mit Query-Parameter fill_ml
                 fill_ml_param = query_params.get("fill_ml", [None])[0]
                 fill_ml = int(fill_ml_param) if fill_ml_param and fill_ml_param.isdigit() else 50
-                CoffeeHandler.handle_brew(self, fill_ml)
+                CoffeeHandler.handle_brew(self, fill_ml, self.auth_middleware)
             elif self.command == "POST":
                 # Brew als POST mit JSON-Body
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(content_length).decode("utf-8")
                 data = json.loads(body) if body else {}
                 fill_ml = data.get("fill_ml", 50)
-                CoffeeHandler.handle_brew(self, fill_ml)
+                CoffeeHandler.handle_brew(self, fill_ml, self.auth_middleware)
             return
 
         # Status-Endpoints (benötigen Authentifizierung)
         if path == "/status":
-            StatusHandler.handle_status(self)
+            StatusHandler.handle_status(self, self.auth_middleware)
             return
         elif path == "/api/status":
-            StatusHandler.handle_extended_status(self)
+            StatusHandler.handle_extended_status(self, self.auth_middleware)
             return
 
         # 404 Not Found

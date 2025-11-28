@@ -372,13 +372,14 @@ class TestRequestRouter:
         router.enable_logging = False
         router.api_token = None
         router.error_handler = error_handler
+        router.auth_middleware = None  # Keine Middleware für Test
         router.wfile = BytesIO()
         router.headers = Mock()
         router.rfile = BytesIO()
         
         with patch("homeconnect_coffee.handlers.router.CoffeeHandler.handle_wake") as mock_handle:
             router._route_request()
-            mock_handle.assert_called_once_with(router)
+            mock_handle.assert_called_once_with(router, None)
 
     def test_route_status_handler(self, handler_kwargs, error_handler):
         """Test Router leitet /status an StatusHandler weiter."""
@@ -388,13 +389,14 @@ class TestRequestRouter:
         router.enable_logging = False
         router.api_token = None
         router.error_handler = error_handler
+        router.auth_middleware = None  # Keine Middleware für Test
         router.wfile = BytesIO()
         router.headers = Mock()
         router.rfile = BytesIO()
         
         with patch("homeconnect_coffee.handlers.router.StatusHandler.handle_status") as mock_handle:
             router._route_request()
-            mock_handle.assert_called_once_with(router)
+            mock_handle.assert_called_once_with(router, None)
 
     def test_route_history_handler(self, handler_kwargs, error_handler):
         """Test Router leitet /api/history an HistoryHandler weiter."""

@@ -105,10 +105,15 @@ def main() -> None:
     monitor = get_monitor(stats_path)
     monitor.print_stats()  # Zeige aktuelle Statistiken beim Start
 
+    # Auth-Middleware initialisieren
+    from homeconnect_coffee.middleware import AuthMiddleware
+    auth_middleware = AuthMiddleware(api_token=api_token, error_handler=error_handler)
+    
     # Router konfigurieren
     RequestRouter.enable_logging = not args.no_log
-    RequestRouter.api_token = api_token
+    RequestRouter.api_token = api_token  # Für Legacy-Kompatibilität
     RequestRouter.error_handler = error_handler
+    RequestRouter.auth_middleware = auth_middleware
 
     # ThreadingHTTPServer verwenden, damit mehrere Requests gleichzeitig verarbeitet werden können
     from http.server import ThreadingHTTPServer
