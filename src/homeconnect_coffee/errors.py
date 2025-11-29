@@ -9,6 +9,11 @@ import traceback
 from enum import IntEnum
 from typing import Any, Dict, Optional
 
+try:
+    import requests.exceptions
+except ImportError:
+    requests = None  # requests not available
+
 # Logger for error handling
 logger = logging.getLogger(__name__)
 
@@ -77,6 +82,7 @@ class ErrorCode(IntEnum):
     BAD_REQUEST = 400
     UNAUTHORIZED = 401
     NOT_FOUND = 404
+    SERVICE_UNAVAILABLE = 503
     INTERNAL_SERVER_ERROR = 500
     GATEWAY_TIMEOUT = 504
     
@@ -223,13 +229,32 @@ class ErrorHandler:
                 ErrorCode.FILE_ERROR,
             )
         
-        # requests.exceptions.Timeout -> 504 Gateway Timeout
-        if exception_type == "Timeout":
+        # requests.exceptions.ConnectionError -> 503 Service Unavailable (device offline)
+        if requests and isinstance(exception, requests.exceptions.ConnectionError):
             return (
-                ErrorCode.GATEWAY_TIMEOUT,
-                "API request timed out",
+                ErrorCode.SERVICE_UNAVAILABLE,
+                "Device is offline or unreachable",
                 ErrorCode.API_ERROR,
             )
+        
+        # requests.exceptions.Timeout -> 503 Service Unavailable (device offline)
+        if requests and isinstance(exception, requests.exceptions.Timeout):
+            return (
+                ErrorCode.SERVICE_UNAVAILABLE,
+                "Device is offline or unreachable",
+                ErrorCode.API_ERROR,
+            )
+        
+        # Fallback: Check exception type name (in case requests module path differs)
+        if exception_type == "ConnectionError" or exception_type == "Timeout":
+            # Check if it's likely a requests exception by module path
+            module = getattr(type(exception), "__module__", "")
+            if "requests" in str(module):
+                return (
+                    ErrorCode.SERVICE_UNAVAILABLE,
+                    "Device is offline or unreachable",
+                    ErrorCode.API_ERROR,
+                )
         
         # RuntimeError with 429 information (from client.py on rate limit)
         if exception_type == "RuntimeError" and "(429)" in exception_message:
@@ -238,6 +263,36 @@ class ErrorHandler:
                 "Rate limit reached. Please try again later.",
                 ErrorCode.API_ERROR,
             )
+        
+        # RuntimeError from client.py - check if it's a connection-related error
+        if exception_type == "RuntimeError" and "API request failed" in exception_message:
+            # Check if the error message indicates connection issues
+            error_lower = exception_message.lower()
+            if any(keyword in error_lower for keyword in [
+                "connection", "timeout", "unreachable", "offline", 
+                "network", "refused", "reset", "broken pipe"
+            ]):
+                return (
+                    ErrorCode.SERVICE_UNAVAILABLE,
+                    "Device is offline or unreachable",
+                    ErrorCode.API_ERROR,
+                )
+            # Check for HTTP 500/503/502/504 which might indicate device offline
+            import re
+            status_match = re.search(r'\((\d{3})\)', exception_message)
+            if status_match:
+                status_code = int(status_match.group(1))
+                if status_code in [500, 502, 503, 504]:
+                    # These status codes might indicate device offline
+                    # But we can't be 100% sure, so we check the error detail
+                    if any(keyword in error_lower for keyword in [
+                        "timeout", "connection", "unreachable", "offline"
+                    ]):
+                        return (
+                            ErrorCode.SERVICE_UNAVAILABLE,
+                            "Device is offline or unreachable",
+                            ErrorCode.API_ERROR,
+                        )
         
         # requests.exceptions.HTTPError -> depends on status code
         if exception_type == "HTTPError" and hasattr(exception, "response"):
@@ -262,6 +317,22 @@ class ErrorHandler:
                         "Rate limit reached. Please try again later.",
                         ErrorCode.API_ERROR,
                     )
+                elif status_code in [500, 502, 503, 504]:
+                    # Server errors might indicate device offline
+                    error_text = ""
+                    try:
+                        if hasattr(response, 'text'):
+                            error_text = response.text.lower()
+                    except Exception:
+                        pass
+                    if any(keyword in error_text for keyword in [
+                        "timeout", "connection", "unreachable", "offline", "network"
+                    ]):
+                        return (
+                            ErrorCode.SERVICE_UNAVAILABLE,
+                            "Device is offline or unreachable",
+                            ErrorCode.API_ERROR,
+                        )
         
         # Default: 500 Internal Server Error
         # Message should not contain sensitive information
@@ -294,7 +365,10 @@ class ErrorHandler:
         exception_message = str(exception)
         
         # Log level based on HTTP status code
-        if code >= 500:
+        # 503 Service Unavailable is treated as WARNING (expected state: device offline)
+        if code == ErrorCode.SERVICE_UNAVAILABLE:
+            log_level = logging.WARNING
+        elif code >= 500:
             log_level = logging.ERROR
         elif code >= 400:
             log_level = logging.WARNING

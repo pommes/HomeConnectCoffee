@@ -115,6 +115,8 @@ class EventStreamManager:
             event_type: Event type (e.g., "STATUS", "EVENT")
             payload: Event data
         """
+        from ..handlers.dashboard_handler import DashboardHandler
+        
         with self._clients_lock:
             if not self._clients:
                 return  # No clients connected
@@ -122,7 +124,8 @@ class EventStreamManager:
             disconnected_clients = []
             for client_handler in self._clients:
                 try:
-                    client_handler._send_sse_event(event_type, payload)
+                    # Use static method from DashboardHandler
+                    DashboardHandler._send_sse_event(client_handler, event_type, payload)
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     # Client closed connection
                     disconnected_clients.append(client_handler)

@@ -57,7 +57,18 @@ class HomeConnectClient:
         
         url = f"{BASE_API}{endpoint}"
         # Timeout: 10 seconds for connection, 30 seconds total
-        resp = requests.request(method, url, headers=self._headers(), json=json_payload, timeout=(10, 30))
+        try:
+            resp = requests.request(method, url, headers=self._headers(), json=json_payload, timeout=(10, 30))
+        except requests.exceptions.ConnectionError as e:
+            # Connection errors (device offline) should be re-raised as-is
+            raise
+        except requests.exceptions.Timeout as e:
+            # Timeout errors (device offline) should be re-raised as-is
+            raise
+        except requests.exceptions.RequestException as e:
+            # Other request exceptions (network issues) should be re-raised as-is
+            raise
+        
         if not resp.ok:
             error_detail = resp.text
             try:
@@ -65,8 +76,23 @@ class HomeConnectClient:
                 error_detail = error_json.get("error", error_json.get("description", error_detail))
             except Exception:
                 pass
+            # Check if status code indicates device offline (500, 502, 503, 504)
+            if resp.status_code in [500, 502, 503, 504]:
+                # These might indicate device offline - check error message
+                error_lower = error_detail.lower()
+                if any(keyword in error_lower for keyword in [
+                    "timeout", "connection", "unreachable", "offline", "network"
+                ]):
+                    # Likely device offline - raise as ConnectionError
+                    raise requests.exceptions.ConnectionError(f"Device appears offline: {error_detail}")
             raise RuntimeError(f"API request failed ({resp.status_code}): {error_detail}")
-        resp.raise_for_status()
+        
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            # Re-raise HTTPError as-is so ErrorHandler can classify it
+            raise
+        
         if resp.status_code == 204:
             return {}
         return resp.json()

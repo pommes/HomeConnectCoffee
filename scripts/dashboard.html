@@ -304,13 +304,28 @@
                     const statusData = await statusResponse.json();
                     updateLiveStatus(statusData);
                 } else {
-                    // Error loading status
-                    console.error('Error loading status:', statusResponse.status, statusResponse.statusText);
+                    // Handle different error cases
                     const liveStatusDiv = document.getElementById('liveStatus');
                     if (liveStatusDiv && liveStatusDiv.querySelector('.loading')) {
-                        liveStatusDiv.innerHTML = `
-                            <div class="error">Error loading status (${statusResponse.status})</div>
-                        `;
+                        if (statusResponse.status === 503) {
+                            // Service Unavailable - device is offline
+                            liveStatusDiv.innerHTML = `
+                                <div class="status-item">
+                                    <span class="status-label">Status:</span>
+                                    <span class="status-value" style="color: #ff9800;">Device offline</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Operation State:</span>
+                                    <span class="status-value">Unreachable</span>
+                                </div>
+                            `;
+                        } else {
+                            // Other errors
+                            console.error('Error loading status:', statusResponse.status, statusResponse.statusText);
+                            liveStatusDiv.innerHTML = `
+                                <div class="error">Error loading status (${statusResponse.status})</div>
+                            `;
+                        }
                     }
                 }
 
@@ -553,14 +568,8 @@
             let timestamp = 'Unknown';
             try {
                 const eventDate = new Date(event.timestamp);
-                timestamp = eventDate.toLocaleString('en-US', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
+                // Format as ISO 8601: YYYY-MM-DDTHH:mm:ss
+                timestamp = eventDate.toISOString().replace('T', ' ').substring(0, 19);
             } catch (e) {
                 timestamp = event.timestamp || 'Unknown';
             }
@@ -690,7 +699,8 @@
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
             
-            const timestamp = new Date().toLocaleTimeString('en-US');
+            // Format as ISO 8601: YYYY-MM-DDTHH:mm:ss
+            const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
             const eventType = type.toUpperCase();
             
             eventItem.innerHTML = `

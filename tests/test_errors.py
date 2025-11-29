@@ -88,16 +88,27 @@ class TestErrorHandler:
         assert response["error_code"] == ErrorCode.FILE_ERROR
 
     def test_handle_error_timeout(self):
-        """Test handle_error() with Timeout."""
+        """Test handle_error() with Timeout (device offline)."""
         handler = ErrorHandler(enable_logging=False)
         
         exception = requests.exceptions.Timeout("Request timeout")
-        exception.__class__.__name__ = "Timeout"  # Mock for type check
         code, response = handler.handle_error(exception)
         
-        assert code == ErrorCode.GATEWAY_TIMEOUT
-        assert response["error"] == "API request timed out"
-        assert response["code"] == ErrorCode.GATEWAY_TIMEOUT
+        assert code == ErrorCode.SERVICE_UNAVAILABLE
+        assert response["error"] == "Device is offline or unreachable"
+        assert response["code"] == ErrorCode.SERVICE_UNAVAILABLE
+        assert response["error_code"] == ErrorCode.API_ERROR
+
+    def test_handle_error_connection_error(self):
+        """Test handle_error() with ConnectionError (device offline)."""
+        handler = ErrorHandler(enable_logging=False)
+        
+        exception = requests.exceptions.ConnectionError("Connection failed")
+        code, response = handler.handle_error(exception)
+        
+        assert code == ErrorCode.SERVICE_UNAVAILABLE
+        assert response["error"] == "Device is offline or unreachable"
+        assert response["code"] == ErrorCode.SERVICE_UNAVAILABLE
         assert response["error_code"] == ErrorCode.API_ERROR
 
     def test_handle_error_http_error_401(self):

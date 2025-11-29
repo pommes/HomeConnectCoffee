@@ -99,6 +99,7 @@ class TestEventStreamManager:
     def test_broadcast_event_with_clients(self, temp_history_db):
         """Test broadcast_event() sends event to clients."""
         from homeconnect_coffee.history import HistoryManager
+        from homeconnect_coffee.handlers.dashboard_handler import DashboardHandler
         
         manager = HistoryManager(temp_history_db)
         event_manager = EventStreamManager(manager, enable_logging=False)
@@ -109,19 +110,19 @@ class TestEventStreamManager:
         event_manager.add_client(client1)
         event_manager.add_client(client2)
         
-        event_manager.broadcast_event("STATUS", {"status": "on"})
-        
-        # Check that _send_sse_event was called
-        assert client1._send_sse_event.called
-        assert client2._send_sse_event.called
-        
-        # Check that correct parameters were passed
-        client1._send_sse_event.assert_called_once_with("STATUS", {"status": "on"})
-        client2._send_sse_event.assert_called_once_with("STATUS", {"status": "on"})
+        # Mock the static method
+        with patch.object(DashboardHandler, '_send_sse_event') as mock_send:
+            event_manager.broadcast_event("STATUS", {"status": "on"})
+            
+            # Check that _send_sse_event was called for both clients
+            assert mock_send.call_count == 2
+            mock_send.assert_any_call(client1, "STATUS", {"status": "on"})
+            mock_send.assert_any_call(client2, "STATUS", {"status": "on"})
 
     def test_broadcast_event_removes_disconnected_clients(self, temp_history_db):
         """Test broadcast_event() removes disconnected clients."""
         from homeconnect_coffee.history import HistoryManager
+        from homeconnect_coffee.handlers.dashboard_handler import DashboardHandler
         
         manager = HistoryManager(temp_history_db)
         event_manager = EventStreamManager(manager, enable_logging=False)
@@ -129,13 +130,16 @@ class TestEventStreamManager:
         client1 = Mock()
         client2 = Mock()
         
-        # client1 raises BrokenPipeError
-        client1._send_sse_event.side_effect = BrokenPipeError()
-        
         event_manager.add_client(client1)
         event_manager.add_client(client2)
         
-        event_manager.broadcast_event("STATUS", {"status": "on"})
+        # Mock the static method to raise BrokenPipeError for client1
+        def side_effect(router, event_type, data):
+            if router == client1:
+                raise BrokenPipeError()
+        
+        with patch.object(DashboardHandler, '_send_sse_event', side_effect=side_effect):
+            event_manager.broadcast_event("STATUS", {"status": "on"})
         
         # client1 should have been removed
         assert client1 not in event_manager._clients
