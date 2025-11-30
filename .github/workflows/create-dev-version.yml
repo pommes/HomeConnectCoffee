@@ -24,8 +24,9 @@ jobs:
     - name: Extract version from release tag
       id: version
       run: |
-        # Get the tag name from the release event
-        TAG_NAME=${GITHUB_REF#refs/tags/}
+        # Get the tag name from the release event context
+        # For release events, use github.event.release.tag_name instead of GITHUB_REF
+        TAG_NAME="${{ github.event.release.tag_name }}"
         # Remove 'v' prefix if present
         VERSION_NUMBER=${TAG_NAME#v}
         echo "version=$VERSION_NUMBER" >> $GITHUB_OUTPUT

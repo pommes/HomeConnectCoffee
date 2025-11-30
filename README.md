@@ -1,7 +1,7 @@
 # HomeConnect Coffee Control
 
 [![Tests](https://github.com/pommes/HomeConnectCoffee/actions/workflows/tests.yml/badge.svg)](https://github.com/pommes/HomeConnectCoffee/actions/workflows/tests.yml)
-[![Release](https://img.shields.io/github/v/release/pommes/HomeConnectCoffee?include_prereleases&sort=semver)](https://github.com/pommes/HomeConnectCoffee/releases/latest)
+[![Release](https://img.shields.io/github/v/release/pommes/HomeConnectCoffee)](https://github.com/pommes/HomeConnectCoffee/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/pommes/HomeConnectCoffee)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/pommes/HomeConnectCoffee?style=social)](https://github.com/pommes/HomeConnectCoffee/stargazers)
