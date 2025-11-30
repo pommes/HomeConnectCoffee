@@ -25,7 +25,13 @@ def _parse_version(version_str: str) -> tuple[int, int, int, str, int]:
     prerelease_type = ""
     prerelease_num = 0
     
-    if ".dev" in version_str:
+    if "-dev" in version_str:
+        parts = version_str.split("-dev")
+        version_str = parts[0]
+        prerelease_type = "dev"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif ".dev" in version_str:
+        # Legacy format support
         parts = version_str.split(".dev")
         version_str = parts[0]
         prerelease_type = "dev"

@@ -40,7 +40,13 @@ def parse_version(version_str: str) -> tuple[int, int, int, str, int]:
     prerelease_num = 0
     
     # Extract prerelease info
-    if ".dev" in version_str:
+    if "-dev" in version_str:
+        parts = version_str.split("-dev")
+        version_str = parts[0]
+        prerelease_type = "dev"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif ".dev" in version_str:
+        # Legacy format support
         parts = version_str.split(".dev")
         version_str = parts[0]
         prerelease_type = "dev"
@@ -91,7 +97,14 @@ def increment_version(
     if current_prerelease_type:
         # Already a prerelease, increment the prerelease number if same type
         if prerelease_type == current_prerelease_type:
-            return f"{major}.{minor}.{patch}.{prerelease_type}{current_prerelease_num + 1}"
+            if prerelease_type == "dev":
+                return f"{major}.{minor}.{patch}-dev{current_prerelease_num + 1}"
+            elif prerelease_type == "alpha":
+                return f"{major}.{minor}.{patch}a{current_prerelease_num + 1}"
+            elif prerelease_type == "beta":
+                return f"{major}.{minor}.{patch}b{current_prerelease_num + 1}"
+            elif prerelease_type == "rc":
+                return f"{major}.{minor}.{patch}rc{current_prerelease_num + 1}"
         # Different prerelease type, use base version
         pass
     
@@ -111,7 +124,7 @@ def increment_version(
     # Add prerelease marker if specified
     if prerelease_type:
         if prerelease_type == "dev":
-            return f"{major}.{minor}.{patch}.{prerelease_type}1"
+            return f"{major}.{minor}.{patch}-dev1"
         elif prerelease_type == "alpha":
             return f"{major}.{minor}.{patch}a1"
         elif prerelease_type == "beta":
@@ -176,14 +189,21 @@ def check_changelog(version: str) -> None:
 def create_git_tag(version: str, dry_run: bool = False) -> None:
     """Create git tag for version.
     
-    For prerelease versions, use '-' instead of '.' in tag (e.g., v1.2.1-dev1).
+    For prerelease versions, use '-' instead of '.' in tag (e.g., v1.2.1-a1).
+    Dev versions are NOT tagged (only committed).
     """
+    # Check if this is a dev version - don't create tags for dev versions
+    if "-dev" in version or ".dev" in version:
+        if dry_run:
+            print(f"[DRY RUN] Would skip tag creation for dev version: {version}")
+        else:
+            print(f"Skipping tag creation for dev version: {version}")
+        return
+    
     # Convert version to tag format
-    # For prerelease: 1.2.1.dev1 -> v1.2.1-dev1, 1.2.1a1 -> v1.2.1-a1
+    # For prerelease: 1.2.1a1 -> v1.2.1-a1, 1.2.1b1 -> v1.2.1-b1, 1.2.1rc1 -> v1.2.1-rc1
     tag_version = version
-    if ".dev" in tag_version:
-        tag_version = tag_version.replace(".dev", "-dev")
-    elif "a" in tag_version and not tag_version.endswith("a"):
+    if "a" in tag_version and not tag_version.endswith("a"):
         tag_version = tag_version.replace("a", "-a", 1)
     elif "b" in tag_version and not tag_version.endswith("b"):
         tag_version = tag_version.replace("b", "-b", 1)
@@ -226,28 +246,45 @@ def commit_version(version: str, dry_run: bool = False) -> None:
 
 
 def push_to_github(version: str, dry_run: bool = False) -> None:
-    """Push commits and tags to GitHub."""
-    tag_version = version
-    if ".dev" in tag_version:
-        tag_version = tag_version.replace(".dev", "-dev")
-    elif "a" in tag_version and not tag_version.endswith("a"):
-        tag_version = tag_version.replace("a", "-a", 1)
-    elif "b" in tag_version and not tag_version.endswith("b"):
-        tag_version = tag_version.replace("b", "-b", 1)
-    elif "rc" in tag_version:
-        tag_version = tag_version.replace("rc", "-rc")
+    """Push commits and tags to GitHub.
     
-    tag = f"v{tag_version}"
+    Dev versions only push commits, no tags.
+    """
+    # Check if this is a dev version - don't push tags for dev versions
+    is_dev = "-dev" in version or ".dev" in version
     
     if dry_run:
-        print(f"[DRY RUN] Would push commits and tag {tag} to GitHub")
+        if is_dev:
+            print(f"[DRY RUN] Would push commits only (no tag) for dev version: {version}")
+        else:
+            tag_version = version
+            if "a" in tag_version and not tag_version.endswith("a"):
+                tag_version = tag_version.replace("a", "-a", 1)
+            elif "b" in tag_version and not tag_version.endswith("b"):
+                tag_version = tag_version.replace("b", "-b", 1)
+            elif "rc" in tag_version:
+                tag_version = tag_version.replace("rc", "-rc")
+            tag = f"v{tag_version}"
+            print(f"[DRY RUN] Would push commits and tag {tag} to GitHub")
         return
     
     # Push commits
     subprocess.run(["git", "push"], check=True)
-    # Push tag
-    subprocess.run(["git", "push", "origin", tag], check=True)
-    print(f"Pushed to GitHub (tag: {tag})")
+    
+    if is_dev:
+        print(f"Pushed commits to GitHub (no tag for dev version)")
+    else:
+        # Convert version to tag format and push tag
+        tag_version = version
+        if "a" in tag_version and not tag_version.endswith("a"):
+            tag_version = tag_version.replace("a", "-a", 1)
+        elif "b" in tag_version and not tag_version.endswith("b"):
+            tag_version = tag_version.replace("b", "-b", 1)
+        elif "rc" in tag_version:
+            tag_version = tag_version.replace("rc", "-rc")
+        tag = f"v{tag_version}"
+        subprocess.run(["git", "push", "origin", tag], check=True)
+        print(f"Pushed to GitHub (tag: {tag})")
 
 
 def main() -> None:
@@ -270,7 +307,7 @@ def main() -> None:
     parser.add_argument(
         "--dev",
         action="store_true",
-        help="Create development version (e.g., 1.2.1.dev1)",
+        help="Create development version (e.g., 1.2.1-dev1). Dev versions are committed but NOT tagged.",
     )
     parser.add_argument(
         "--alpha",
@@ -348,14 +385,18 @@ def main() -> None:
         if not args.dry_run:
             commit_version(new_version, dry_run=args.dry_run)
         
-        # Create tag
+        # Create tag (skipped for dev versions)
         create_git_tag(new_version, dry_run=args.dry_run)
         
         # Push to GitHub
         if not args.dry_run:
             push_to_github(new_version, dry_run=args.dry_run)
-            print(f"\n✓ Release {new_version} created successfully!")
-            print("GitHub Actions will automatically create a release.")
+            if prerelease_type == "dev":
+                print(f"\n✓ Dev version {new_version} committed successfully!")
+                print("(No tag created for dev versions)")
+            else:
+                print(f"\n✓ Release {new_version} created successfully!")
+                print("GitHub Actions will automatically create a release.")
         else:
             print("\n[DRY RUN] No changes were made.")
         

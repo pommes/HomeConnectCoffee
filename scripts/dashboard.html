@@ -31,11 +31,24 @@
             border-radius: 10px;
             margin-bottom: 30px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
         }
 
         h1 {
             font-size: 2.5em;
             margin-bottom: 10px;
+        }
+
+        .version-info {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            font-size: 0.9em;
+            opacity: 0.9;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-weight: 500;
         }
 
         .status-indicator {
@@ -208,6 +221,7 @@
     <div class="container">
         <header>
             <h1>☕ HomeConnect Coffee Dashboard</h1>
+            <div class="version-info">{{VERSION}}</div>
             <p>
                 <span class="status-indicator" id="connectionStatus"></span>
                 <span id="connectionText">Connecting...</span>

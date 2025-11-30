@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .. import __version__, get_version_type, is_release_version
 from ..errors import ErrorCode
 from ..services import EventStreamManager
 
@@ -48,6 +49,18 @@ class DashboardHandler:
 
         try:
             dashboard_html = dashboard_path.read_text(encoding="utf-8")
+            
+            # Embed version in HTML
+            version_type = get_version_type()
+            if is_release_version():
+                version_display = f"v{__version__}"
+            else:
+                version_type_upper = version_type.upper()
+                version_display = f"v{__version__} ({version_type_upper})"
+            
+            # Replace version placeholder in HTML
+            dashboard_html = dashboard_html.replace("{{VERSION}}", version_display)
+            
             router.send_response(200)
             router.send_header("Content-Type", "text/html; charset=utf-8")
             router.send_header("Access-Control-Allow-Origin", "*")
