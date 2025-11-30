@@ -147,6 +147,61 @@
             border-radius: 5px;
             margin: 10px 0;
         }
+
+        /* Progress bar styles */
+        .progress-container {
+            margin-top: 15px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 24px;
+            background-color: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .progress-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 24px;
+            font-weight: 600;
+            font-size: 0.85em;
+            color: #333;
+            z-index: 1;
+        }
+
+        .progress-bar.active {
+            animation: progress-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes progress-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
     </style>
 </head>
 <body>
@@ -345,6 +400,65 @@
             }
         }
 
+        function formatProgramName(programKey) {
+            if (!programKey || programKey === 'No program') {
+                return 'No active program';
+            }
+            
+            // Remove common prefixes (in order of specificity, case-insensitive)
+            let name = programKey
+                .replace(/ConsumerProducts\.CoffeeMaker\.Program\./gi, '')
+                .replace(/BSH\.Common\.Program\./gi, '')
+                .replace(/CleaningModes\./gi, '')
+                .replace(/Beverage\./gi, ''); // Remove Beverage prefix (e.g., "Beverage.Espresso" or "Beverage.espresso")
+            
+            // Normalize to lowercase for case-insensitive mapping lookup
+            const normalizedName = name.toLowerCase();
+            
+            // Mapping for common program names (case-insensitive lookup)
+            const programMap = {
+                // Coffee Maker Programs
+                'espresso': 'Espresso',
+                'coffee': 'Coffee',
+                'cappuccino': 'Cappuccino',
+                'lattemacchiato': 'Latte Macchiato',
+                'caffelatte': 'Caffè Latte',
+                'americano': 'Americano',
+                'hotwater': 'Hot Water',
+                'hotmilk': 'Hot Milk',
+                'milkfoam': 'Milk Foam',
+                'ristretto': 'Ristretto',
+                'lungo': 'Lungo',
+                
+                // Cleaning Modes
+                'applianceonrinsing': 'Rinsing',
+                'applianceondescaling': 'Descaling',
+                'applianceoncleaning': 'Cleaning',
+                
+                // Common States
+                'standby': 'Standby',
+                'ready': 'Ready',
+                'running': 'Running',
+                'finished': 'Finished',
+                'aborted': 'Aborted',
+                'error': 'Error',
+            };
+            
+            // Check if we have a direct mapping (case-insensitive)
+            if (programMap[normalizedName]) {
+                return programMap[normalizedName];
+            }
+            
+            // Convert camelCase/PascalCase to readable format
+            // e.g., "LatteMacchiato" -> "Latte Macchiato"
+            name = name.replace(/([A-Z])/g, ' $1').trim();
+            
+            // Capitalize first letter of each word
+            return name.split(' ').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+            ).join(' ');
+        }
+
         function updateLiveStatus(data) {
             const liveStatusDiv = document.getElementById('liveStatus');
             
@@ -386,13 +500,44 @@
             if (data.programs && data.programs.active && data.programs.active.data) {
                 const program = data.programs.active.data;
                 const programKey = program.key || 'No program';
+                const programName = formatProgramName(programKey);
+                
+                // Check for progress in options
+                let progressValue = null;
+                if (program.options && Array.isArray(program.options)) {
+                    const progressOption = program.options.find(opt => 
+                        opt.key === 'BSH.Common.Option.ProgramProgress'
+                    );
+                    if (progressOption && progressOption.value !== undefined) {
+                        progressValue = parseInt(progressOption.value);
+                    }
+                }
+                
+                let progressHTML = '';
+                if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
+                    progressHTML = `
+                        <div class="progress-container">
+                            <div class="progress-label">
+                                <span>Progress</span>
+                                <span>${progressValue}%</span>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar active" style="width: ${progressValue}%"></div>
+                                <div class="progress-text">${progressValue}%</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
                 activeProgramDiv.innerHTML = `
                     <div class="status-item">
                         <span class="status-label">Program:</span>
-                        <span class="status-value">${programKey.replace('ConsumerProducts.CoffeeMaker.Program.', '')}</span>
+                        <span class="status-value">${programName}</span>
                     </div>
+                    ${progressHTML}
                 `;
             } else {
+                // No active program - ensure progress bar is removed
                 activeProgramDiv.innerHTML = `
                     <div class="status-item">
                         <span class="status-label">Program:</span>
@@ -400,6 +545,50 @@
                     </div>
                 `;
             }
+        }
+
+        function updateProgramProgress(progressValue) {
+            const activeProgramDiv = document.getElementById('activeProgram');
+            
+            // Check if there's an active program (not "No active program")
+            const programItem = activeProgramDiv.querySelector('.status-item');
+            if (!programItem) {
+                return; // No program item found
+            }
+            
+            const programValueElement = programItem.querySelector('.status-value');
+            if (!programValueElement || programValueElement.textContent.trim() === 'No active program') {
+                // No active program - remove progress bar if it exists
+                const progressContainer = activeProgramDiv.querySelector('.progress-container');
+                if (progressContainer) {
+                    progressContainer.remove();
+                }
+                return;
+            }
+            
+            // Validate progress value
+            if (progressValue === null || progressValue === undefined || isNaN(progressValue) || progressValue < 0 || progressValue > 100) {
+                return;
+            }
+            
+            // Update or create progress display
+            let progressContainer = activeProgramDiv.querySelector('.progress-container');
+            if (!progressContainer) {
+                progressContainer = document.createElement('div');
+                progressContainer.className = 'progress-container';
+                activeProgramDiv.appendChild(progressContainer);
+            }
+            
+            progressContainer.innerHTML = `
+                <div class="progress-label">
+                    <span>Progress</span>
+                    <span>${progressValue}%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar active" style="width: ${progressValue}%"></div>
+                    <div class="progress-text">${progressValue}%</div>
+                </div>
+            `;
         }
 
         async function loadHistory() {
@@ -600,7 +789,7 @@
             }
 
             const labels = Object.keys(counts).map(key => 
-                key.replace('ConsumerProducts.CoffeeMaker.Program.', '')
+                formatProgramName(key)
             );
             const values = Object.values(counts);
 
@@ -665,8 +854,9 @@
                 try {
                     const data = JSON.parse(event.data);
                     addEventToLog('STATUS', data);
-                    // No loadInitialData() anymore - updates come via event stream
-                    // Status is loaded on initial load, then only updated via events
+                    // Update status which may include program changes
+                    // This will automatically hide progress if program ends
+                    loadInitialData();
                 } catch (e) {
                     console.error('Error parsing STATUS event:', e);
                 }
@@ -676,9 +866,45 @@
                 try {
                     const data = JSON.parse(event.data);
                     addEventToLog('EVENT', data);
+                    
+                    // Check for ProgramProgress updates
+                    if (data.items && Array.isArray(data.items)) {
+                        const progressItem = data.items.find(item => 
+                            item.key === 'BSH.Common.Option.ProgramProgress'
+                        );
+                        if (progressItem && progressItem.value !== undefined) {
+                            const progressValue = parseInt(progressItem.value);
+                            if (!isNaN(progressValue)) {
+                                updateProgramProgress(progressValue);
+                            }
+                        }
+                    }
+                    
                     loadHistory(); // Reload history
                 } catch (e) {
                     console.error('Error parsing EVENT:', e);
+                }
+            });
+
+            eventSource.addEventListener('NOTIFY', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addEventToLog('NOTIFY', data);
+                    
+                    // Check for ProgramProgress updates
+                    if (data.items && Array.isArray(data.items)) {
+                        const progressItem = data.items.find(item => 
+                            item.key === 'BSH.Common.Option.ProgramProgress'
+                        );
+                        if (progressItem && progressItem.value !== undefined) {
+                            const progressValue = parseInt(progressItem.value);
+                            if (!isNaN(progressValue)) {
+                                updateProgramProgress(progressValue);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing NOTIFY event:', e);
                 }
             });
 

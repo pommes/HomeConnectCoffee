@@ -268,11 +268,21 @@ class EventStreamManager:
                                         # ActiveProgram Event: If value is not null, a program was started
                                         if item_key == "BSH.Common.Root.ActiveProgram" and item_value:
                                             if isinstance(item_value, dict):
+                                                # Value is an object with "key" and "options"
                                                 self._history_queue.put_nowait((
                                                     "program_started",
                                                     {
                                                         "program": item_value.get("key", "Unknown"),
                                                         "options": item_value.get("options", []),
+                                                    },
+                                                ))
+                                            elif isinstance(item_value, str):
+                                                # Value is directly the program key (string)
+                                                self._history_queue.put_nowait((
+                                                    "program_started",
+                                                    {
+                                                        "program": item_value,
+                                                        "options": [],
                                                     },
                                                 ))
                             except Exception as e:
