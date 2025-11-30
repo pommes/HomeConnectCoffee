@@ -346,12 +346,16 @@ curl https://your-hostname.local:8080/wake?token=my-token
    - Or with header: Add **"Get Headers"** with `Authorization: Bearer YOUR_TOKEN`
    - Enable **"Use with Siri"**
 
-   **Brew (Start Espresso) - with token:**
+   **Brew (Start Coffee Program) - with token:**
    - Add a **"Get Contents of URL"** action
    - Method: **POST**
    - URL: `https://YOUR_MAC_IP:8080/brew?token=YOUR_TOKEN`
    - Request Body: JSON
-   - Body content: `{"fill_ml": 50}`
+   - Body content examples:
+     - Espresso: `{"program": "espresso", "fill_ml": 50}`
+     - Coffee (Cafè Crema): `{"program": "coffee", "fill_ml": 200}`
+     - Cappuccino: `{"program": "cappuccino"}`
+     - Latte Macchiato: `{"program": "latte macchiato"}`
    - Or with header: Add **"Get Headers"** with `Authorization: Bearer YOUR_TOKEN`
    - Enable **"Use with Siri"`
 
@@ -366,7 +370,11 @@ curl https://your-hostname.local:8080/wake?token=my-token
 - `GET /cert` - Download SSL certificate (public, no authentication)
 - `GET /wake` - Activates the device
 - `GET /status` - Shows the device status
-- `POST /brew` - Starts an espresso (JSON: `{"fill_ml": 50}`)
+- `POST /brew` - Starts a coffee program (JSON: `{"program": "espresso", "fill_ml": 50}`)
+  - Available programs: `espresso`, `coffee`, `cappuccino`, `latte macchiato`, `caffè latte`, `americano`, `hot water`, `hot milk`, `milk foam`, `ristretto`, `lungo`
+  - `fill_ml` is optional and only supported for `espresso` and `coffee`
+  - Default: `espresso` with `fill_ml=50` (backward compatible)
+- `GET /brew?program=coffee&fill_ml=200` - Alternative GET request format
 - `GET /health` - Health check
 
 ## Further Ideas

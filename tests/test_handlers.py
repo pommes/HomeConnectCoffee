@@ -158,8 +158,8 @@ class TestCoffeeHandler:
             
             mock_service.wake_device.assert_called_once()
 
-    def test_handle_brew(self, handler_kwargs, error_handler):
-        """Test handle_brew() static method."""
+    def test_handle_brew_default_espresso(self, handler_kwargs, error_handler):
+        """Test handle_brew() with default espresso (backward compatibility)."""
         router = BaseHandler(**handler_kwargs)
         router.path = "/brew"
         router.api_token = None
@@ -177,12 +177,66 @@ class TestCoffeeHandler:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
             mock_service = Mock()
-            mock_service.brew_espresso.return_value = {"status": "ok"}
+            mock_service.brew_program.return_value = {"status": "ok"}
             mock_service_class.return_value = mock_service
             
-            CoffeeHandler.handle_brew(router, 100)
+            CoffeeHandler.handle_brew(router, fill_ml=50)
             
-            mock_service.brew_espresso.assert_called_once_with(100)
+            mock_service.brew_program.assert_called_once()
+            # Check that espresso key was used
+            call_args = mock_service.brew_program.call_args
+            assert "ConsumerProducts.CoffeeMaker.Program.Beverage.Espresso" in str(call_args)
+
+    def test_handle_brew_with_program(self, handler_kwargs, error_handler):
+        """Test handle_brew() with specific program."""
+        router = BaseHandler(**handler_kwargs)
+        router.path = "/brew"
+        router.api_token = None
+        router.error_handler = error_handler
+        router.wfile = BytesIO()
+        router.send_response = Mock()
+        router.send_header = Mock()
+        router.end_headers = Mock()
+        router.headers = Mock()
+        router.headers.get.return_value = ""
+        
+        with patch("homeconnect_coffee.handlers.coffee_handler.load_config") as mock_config, \
+             patch("homeconnect_coffee.handlers.coffee_handler.HomeConnectClient") as mock_client_class, \
+             patch("homeconnect_coffee.handlers.coffee_handler.CoffeeService") as mock_service_class:
+            mock_client = Mock()
+            mock_client_class.return_value = mock_client
+            mock_service = Mock()
+            mock_service.brew_program.return_value = {"status": "ok"}
+            mock_service_class.return_value = mock_service
+            
+            CoffeeHandler.handle_brew(router, fill_ml=None, program="cappuccino")
+            
+            mock_service.brew_program.assert_called_once()
+            # Check that cappuccino key was used
+            call_args = mock_service.brew_program.call_args
+            assert "ConsumerProducts.CoffeeMaker.Program.Beverage.Cappuccino" in str(call_args)
+
+    def test_handle_brew_invalid_program(self, handler_kwargs, error_handler):
+        """Test handle_brew() with invalid program name."""
+        router = BaseHandler(**handler_kwargs)
+        router.path = "/brew"
+        router.api_token = None
+        router.error_handler = error_handler
+        router.wfile = BytesIO()
+        router.send_response = Mock()
+        router.send_header = Mock()
+        router.end_headers = Mock()
+        router._send_error = Mock()
+        router.headers = Mock()
+        router.headers.get.return_value = ""
+        
+        CoffeeHandler.handle_brew(router, fill_ml=None, program="invalid_program")
+        
+        # Should send 400 error
+        router._send_error.assert_called_once()
+        call_args = router._send_error.call_args[0]
+        assert call_args[0] == 400
+        assert "Invalid program" in call_args[1]
 
 
 @pytest.mark.unit

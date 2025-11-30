@@ -110,17 +110,25 @@ class RequestRouter(BaseHandler):
             return
         elif path == "/brew":
             if self.command == "GET":
-                # Brew as GET with query parameter fill_ml
+                # Brew as GET with query parameters
+                program_param = query_params.get("program", [None])[0]
                 fill_ml_param = query_params.get("fill_ml", [None])[0]
-                fill_ml = int(fill_ml_param) if fill_ml_param and fill_ml_param.isdigit() else 50
-                CoffeeHandler.handle_brew(self, fill_ml, self.auth_middleware)
+                fill_ml = int(fill_ml_param) if fill_ml_param and fill_ml_param.isdigit() else None
+                # Default fill_ml to 50 for backward compatibility if no program specified
+                if program_param is None and fill_ml is None:
+                    fill_ml = 50
+                CoffeeHandler.handle_brew(self, fill_ml=fill_ml, program=program_param, auth_middleware=self.auth_middleware)
             elif self.command == "POST":
                 # Brew as POST with JSON body
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(content_length).decode("utf-8")
                 data = json.loads(body) if body else {}
-                fill_ml = data.get("fill_ml", 50)
-                CoffeeHandler.handle_brew(self, fill_ml, self.auth_middleware)
+                program = data.get("program")
+                fill_ml = data.get("fill_ml")
+                # Default fill_ml to 50 for backward compatibility if no program specified
+                if program is None and fill_ml is None:
+                    fill_ml = 50
+                CoffeeHandler.handle_brew(self, fill_ml=fill_ml, program=program, auth_middleware=self.auth_middleware)
             return
 
         # Status endpoints (require authentication)

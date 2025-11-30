@@ -137,6 +137,86 @@ class TestCoffeeService:
                 "BSH.Common.EnumType.PowerState.On"
             )
 
+    def test_brew_program_espresso(self, test_config, valid_token_bundle, temp_token_file):
+        """Test brew_program() with espresso."""
+        valid_token_bundle.save(temp_token_file)
+        
+        from homeconnect_coffee.client import HomeConnectClient
+        from homeconnect_coffee.services.coffee_service import ESPRESSO_KEY
+        
+        client = HomeConnectClient(test_config)
+        
+        with patch.object(client, "get_settings") as mock_get_settings, \
+             patch.object(client, "clear_selected_program") as mock_clear, \
+             patch.object(client, "select_program") as mock_select, \
+             patch.object(client, "start_program") as mock_start:
+            
+            mock_get_settings.return_value = {
+                "data": {
+                    "settings": [
+                        {
+                            "key": "BSH.Common.Setting.PowerState",
+                            "value": "BSH.Common.EnumType.PowerState.On"
+                        }
+                    ]
+                }
+            }
+            
+            service = CoffeeService(client)
+            result = service.brew_program(ESPRESSO_KEY, fill_ml=50, program_name="Espresso")
+            
+            assert result["status"] == "started"
+            assert "Espresso (50 ml)" in result["message"]
+            mock_select.assert_called_once()
+            mock_start.assert_called_once()
+
+    def test_brew_program_cappuccino(self, test_config, valid_token_bundle, temp_token_file):
+        """Test brew_program() with cappuccino (no fill_ml)."""
+        valid_token_bundle.save(temp_token_file)
+        
+        from homeconnect_coffee.client import HomeConnectClient
+        from homeconnect_coffee.services.coffee_service import CAPPUCCINO_KEY
+        
+        client = HomeConnectClient(test_config)
+        
+        with patch.object(client, "get_settings") as mock_get_settings, \
+             patch.object(client, "clear_selected_program") as mock_clear, \
+             patch.object(client, "select_program") as mock_select, \
+             patch.object(client, "start_program") as mock_start:
+            
+            mock_get_settings.return_value = {
+                "data": {
+                    "settings": [
+                        {
+                            "key": "BSH.Common.Setting.PowerState",
+                            "value": "BSH.Common.EnumType.PowerState.On"
+                        }
+                    ]
+                }
+            }
+            
+            service = CoffeeService(client)
+            result = service.brew_program(CAPPUCCINO_KEY, fill_ml=None, program_name="Cappuccino")
+            
+            assert result["status"] == "started"
+            assert "Cappuccino" in result["message"]
+            assert "ml" not in result["message"]  # No fill_ml for cappuccino
+            mock_select.assert_called_once()
+            mock_start.assert_called_once()
+
+    def test_brew_program_invalid_fill_ml(self, test_config, valid_token_bundle, temp_token_file):
+        """Test brew_program() raises ValueError for fill_ml on unsupported program."""
+        valid_token_bundle.save(temp_token_file)
+        
+        from homeconnect_coffee.client import HomeConnectClient
+        from homeconnect_coffee.services.coffee_service import CAPPUCCINO_KEY
+        
+        client = HomeConnectClient(test_config)
+        service = CoffeeService(client)
+        
+        with pytest.raises(ValueError, match="does not support fill_ml"):
+            service.brew_program(CAPPUCCINO_KEY, fill_ml=200, program_name="cappuccino")
+
 
 @pytest.mark.unit
 class TestStatusService:
