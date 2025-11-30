@@ -419,7 +419,7 @@
             const programMap = {
                 // Coffee Maker Programs
                 'espresso': 'Espresso',
-                'coffee': 'Coffee',
+                'coffee': 'Cafè Crema', // Coffee program maps to Cafè Crema
                 'cappuccino': 'Cappuccino',
                 'lattemacchiato': 'Latte Macchiato',
                 'caffelatte': 'Caffè Latte',
@@ -664,15 +664,61 @@
                         // When loading more: add events at end (already chronologically sorted)
                         
                         if (!beforeTimestamp) {
-                            // Initial load: show newest first (reverse)
-                            const reversedEvents = [...events].reverse();
-                            reversedEvents.forEach(event => {
-                                addEventToLogFromHistory(event, true); // true = insert at top
+                            // Initial load: sort events by timestamp (newest first), then by value if timestamps are equal
+                            const sortedEvents = [...events].sort((a, b) => {
+                                const timestampA = new Date(a.timestamp).getTime();
+                                const timestampB = new Date(b.timestamp).getTime();
+                                
+                                if (timestampB !== timestampA) {
+                                    return timestampB - timestampA; // Descending order (newest first)
+                                }
+                                
+                                // If timestamps are equal, try to sort by value (for ProgramProgress events)
+                                const dataA = a.data || {};
+                                const dataB = b.data || {};
+                                
+                                if (dataA.items && dataA.items[0] && dataA.items[0].value !== undefined &&
+                                    dataB.items && dataB.items[0] && dataB.items[0].value !== undefined) {
+                                    const valueA = parseInt(dataA.items[0].value) || 0;
+                                    const valueB = parseInt(dataB.items[0].value) || 0;
+                                    return valueB - valueA; // Descending order (higher value first)
+                                }
+                                
+                                return 0; // Maintain insertion order
                             });
+                            
+                            // Create all event items and insert at once
+                            const fragment = document.createDocumentFragment();
+                            sortedEvents.forEach(event => {
+                                const eventItem = document.createElement('div');
+                                eventItem.className = 'event-item';
+                                
+                                const { timestamp, timestampValue } = extractTimestamp(event.data, event.timestamp);
+                                eventItem.setAttribute('data-timestamp', timestampValue);
+                                
+                                const eventType = (event.type || 'UNKNOWN').toUpperCase();
+                                const eventData = event.data || {};
+                                
+                                eventItem.innerHTML = `
+                                    <div class="event-time">${timestamp}</div>
+                                    <div class="event-type">${eventType}</div>
+                                    <div>${JSON.stringify(eventData, null, 2)}</div>
+                                `;
+                                
+                                fragment.appendChild(eventItem);
+                            });
+                            
+                            eventLog.appendChild(fragment);
                             
                             // Store timestamp of oldest event (for loading more)
                             if (events.length > 0) {
-                                oldestEventTimestamp = events[0].timestamp; // Oldest event
+                                // Find oldest event (lowest timestamp)
+                                const oldestEvent = events.reduce((oldest, current) => {
+                                    const oldestTime = new Date(oldest.timestamp).getTime();
+                                    const currentTime = new Date(current.timestamp).getTime();
+                                    return currentTime < oldestTime ? current : oldest;
+                                });
+                                oldestEventTimestamp = oldestEvent.timestamp;
                             }
                         } else {
                             // Load more: add events at end (chronologically oldest first)
@@ -685,6 +731,7 @@
                                 oldestEventTimestamp = events[0].timestamp;
                             }
                         }
+                        
                         
                         // If fewer events than limit were returned, there are no more
                         if (events.length < limit) {
@@ -741,6 +788,120 @@
             }
         }
 
+        // Helper function to extract timestamp from event data
+        function extractTimestamp(data, fallbackTimestamp = null) {
+            let eventTimestamp = null;
+            let timestampValue = Date.now();
+            
+            if (fallbackTimestamp) {
+                // Use provided timestamp (for history events)
+                try {
+                    eventTimestamp = new Date(fallbackTimestamp);
+                    timestampValue = eventTimestamp.getTime();
+                } catch (e) {
+                    // Invalid timestamp, use current time
+                }
+            } else if (data && typeof data === 'object') {
+                // Extract from data (for live events)
+                if (data.timestamp) {
+                    if (typeof data.timestamp === 'number') {
+                        timestampValue = data.timestamp < 10000000000 ? data.timestamp * 1000 : data.timestamp;
+                        eventTimestamp = new Date(timestampValue);
+                    } else {
+                        eventTimestamp = new Date(data.timestamp);
+                        timestampValue = eventTimestamp.getTime();
+                    }
+                } else if (data.items && Array.isArray(data.items)) {
+                    for (const item of data.items) {
+                        if (item.timestamp !== undefined && item.timestamp !== null) {
+                            timestampValue = parseInt(item.timestamp) * 1000;
+                            eventTimestamp = new Date(timestampValue);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (!eventTimestamp || isNaN(eventTimestamp.getTime())) {
+                eventTimestamp = new Date();
+                timestampValue = Date.now();
+            }
+            
+            const timestamp = eventTimestamp.toISOString().replace('T', ' ').substring(0, 19);
+            return { timestamp, timestampValue };
+        }
+
+        // Helper function to compare events for sorting (returns negative if a should come before b)
+        function compareEvents(a, b) {
+            const timestampA = parseInt(a.getAttribute('data-timestamp') || '0');
+            const timestampB = parseInt(b.getAttribute('data-timestamp') || '0');
+            
+            if (timestampB !== timestampA) {
+                return timestampB - timestampA; // Descending order (newest first)
+            }
+            
+            // Same timestamp - try to sort by value (for ProgramProgress events)
+            try {
+                const lastDivA = a.querySelector('div:last-child');
+                const lastDivB = b.querySelector('div:last-child');
+                
+                if (lastDivA && lastDivB) {
+                    const dataA = JSON.parse(lastDivA.textContent);
+                    const dataB = JSON.parse(lastDivB.textContent);
+                    
+                    if (dataA && dataA.items && Array.isArray(dataA.items) && dataA.items[0] && dataA.items[0].value !== undefined &&
+                        dataB && dataB.items && Array.isArray(dataB.items) && dataB.items[0] && dataB.items[0].value !== undefined) {
+                        const valueA = parseInt(dataA.items[0].value) || 0;
+                        const valueB = parseInt(dataB.items[0].value) || 0;
+                        return valueB - valueA; // Descending order (higher value first)
+                    }
+                }
+            } catch (e) {
+                // If parsing fails, maintain order
+            }
+            
+            return 0; // Maintain insertion order
+        }
+
+        // Helper function to insert event at correct position
+        function insertEventAtPosition(eventItem, timestampValue, eventData = null) {
+            const eventLog = document.getElementById('eventLog');
+            const existingEvents = Array.from(eventLog.querySelectorAll('.event-item'));
+            
+            for (let i = 0; i < existingEvents.length; i++) {
+                const existingEvent = existingEvents[i];
+                const existingTimestamp = parseInt(existingEvent.getAttribute('data-timestamp') || '0');
+                
+                if (timestampValue > existingTimestamp) {
+                    eventLog.insertBefore(eventItem, existingEvent);
+                    return true;
+                } else if (timestampValue === existingTimestamp && eventData) {
+                    // Same timestamp - try to sort by value
+                    try {
+                        const lastDivExisting = existingEvent.querySelector('div:last-child');
+                        if (lastDivExisting) {
+                            const dataExisting = JSON.parse(lastDivExisting.textContent);
+                            
+                            if (eventData.items && Array.isArray(eventData.items) && eventData.items[0] && eventData.items[0].value !== undefined &&
+                                dataExisting && dataExisting.items && Array.isArray(dataExisting.items) && dataExisting.items[0] && dataExisting.items[0].value !== undefined) {
+                                const valueNew = parseInt(eventData.items[0].value) || 0;
+                                const valueExisting = parseInt(dataExisting.items[0].value) || 0;
+                                
+                                if (valueNew > valueExisting) {
+                                    eventLog.insertBefore(eventItem, existingEvent);
+                                    return true;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        // If parsing fails, continue
+                    }
+                }
+            }
+            
+            return false; // Not inserted, should be appended
+        }
+
         function addEventToLogFromHistory(event, prepend = false) {
             const eventLog = document.getElementById('eventLog');
             
@@ -753,15 +914,9 @@
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
             
-            // Parse timestamp
-            let timestamp = 'Unknown';
-            try {
-                const eventDate = new Date(event.timestamp);
-                // Format as ISO 8601: YYYY-MM-DDTHH:mm:ss
-                timestamp = eventDate.toISOString().replace('T', ' ').substring(0, 19);
-            } catch (e) {
-                timestamp = event.timestamp || 'Unknown';
-            }
+            // Extract timestamp
+            const { timestamp, timestampValue } = extractTimestamp(event.data, event.timestamp);
+            eventItem.setAttribute('data-timestamp', timestampValue);
             
             const eventType = (event.type || 'UNKNOWN').toUpperCase();
             const eventData = event.data || {};
@@ -773,9 +928,24 @@
             `;
 
             if (prepend) {
-                eventLog.insertBefore(eventItem, eventLog.firstChild);
+                // Insert at correct position (newest first)
+                const inserted = insertEventAtPosition(eventItem, timestampValue, eventData);
+                if (!inserted) {
+                    // This is the newest event, insert at very top
+                    if (eventLog.firstChild) {
+                        eventLog.insertBefore(eventItem, eventLog.firstChild);
+                    } else {
+                        eventLog.appendChild(eventItem);
+                    }
+                }
             } else {
-                eventLog.appendChild(eventItem);
+                // Append at end (for loading more events)
+                const loadingIndicator = eventLog.querySelector('.loading-more');
+                if (loadingIndicator) {
+                    eventLog.insertBefore(eventItem, loadingIndicator);
+                } else {
+                    eventLog.appendChild(eventItem);
+                }
             }
         }
 
@@ -925,8 +1095,10 @@
             const eventItem = document.createElement('div');
             eventItem.className = 'event-item';
             
-            // Format as ISO 8601: YYYY-MM-DDTHH:mm:ss
-            const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            // Extract timestamp from event data
+            const { timestamp, timestampValue } = extractTimestamp(data);
+            eventItem.setAttribute('data-timestamp', timestampValue);
+            
             const eventType = type.toUpperCase();
             
             eventItem.innerHTML = `
@@ -935,8 +1107,17 @@
                 <div>${JSON.stringify(data, null, 2)}</div>
             `;
 
-            // Always insert live events at top
-            eventLog.insertBefore(eventItem, eventLog.firstChild);
+            // Insert event at correct position (newest first)
+            const inserted = insertEventAtPosition(eventItem, timestampValue, data);
+            if (!inserted) {
+                // Append at end (oldest)
+                const loadingIndicator = eventLog.querySelector('.loading-more');
+                if (loadingIndicator) {
+                    eventLog.insertBefore(eventItem, loadingIndicator);
+                } else {
+                    eventLog.appendChild(eventItem);
+                }
+            }
 
             // Limit to 100 events in DOM (for performance)
             while (eventLog.children.length > 100) {
