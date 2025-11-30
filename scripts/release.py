@@ -95,53 +95,49 @@ def parse_version(version_str: str) -> tuple[int, int, int, str, int]:
     return (major, minor, patch, prerelease_type, prerelease_num)
 
 
+def remove_prerelease_suffix(version: str) -> str:
+    """Remove prerelease suffix from version (e.g., 1.2.1-b3 -> 1.2.1).
+    
+    Args:
+        version: Version string with optional prerelease suffix
+    
+    Returns:
+        Version string without prerelease suffix
+    """
+    major, minor, patch, _, _ = parse_version(version)
+    return f"{major}.{minor}.{patch}"
+
+
 def increment_version(
     current_version: str,
-    bump_type: str,
     prerelease_type: str | None = None,
 ) -> str:
-    """Increment version based on bump type.
+    """Increment version for prerelease types.
+    
+    For release (no prerelease_type), use remove_prerelease_suffix() instead.
     
     Args:
         current_version: Current version string
-        bump_type: 'major', 'minor', or 'patch'
-        prerelease_type: Optional prerelease type ('dev', 'alpha', 'beta', 'rc')
+        prerelease_type: Prerelease type ('dev', 'alpha', 'beta', 'rc')
     
     Returns:
-        New version string
+        New version string with prerelease suffix
     """
     major, minor, patch, current_prerelease_type, current_prerelease_num = parse_version(current_version)
     
-    # If current version is a prerelease, remove prerelease marker first
-    if current_prerelease_type:
-        # Already a prerelease, increment the prerelease number if same type
-        if prerelease_type == current_prerelease_type:
-            if prerelease_type == "dev":
-                # Dev versions don't have numbers, just return the same
-                return f"{major}.{minor}.{patch}-dev"
-            elif prerelease_type == "alpha":
-                return f"{major}.{minor}.{patch}-a{current_prerelease_num + 1}"
-            elif prerelease_type == "beta":
-                return f"{major}.{minor}.{patch}-b{current_prerelease_num + 1}"
-            elif prerelease_type == "rc":
-                return f"{major}.{minor}.{patch}-rc{current_prerelease_num + 1}"
-        # Different prerelease type, use base version
-        pass
+    # If current version is a prerelease, increment the prerelease number if same type
+    if current_prerelease_type and prerelease_type == current_prerelease_type:
+        if prerelease_type == "dev":
+            # Dev versions don't have numbers, just return the same
+            return f"{major}.{minor}.{patch}-dev"
+        elif prerelease_type == "alpha":
+            return f"{major}.{minor}.{patch}-a{current_prerelease_num + 1}"
+        elif prerelease_type == "beta":
+            return f"{major}.{minor}.{patch}-b{current_prerelease_num + 1}"
+        elif prerelease_type == "rc":
+            return f"{major}.{minor}.{patch}-rc{current_prerelease_num + 1}"
     
-    # Increment version based on bump type
-    if bump_type == "major":
-        major += 1
-        minor = 0
-        patch = 0
-    elif bump_type == "minor":
-        minor += 1
-        patch = 0
-    elif bump_type == "patch":
-        patch += 1
-    else:
-        raise ValueError(f"Invalid bump type: {bump_type}")
-    
-    # Add prerelease marker if specified
+    # Add prerelease marker to base version
     if prerelease_type:
         if prerelease_type == "dev":
             return f"{major}.{minor}.{patch}-dev"
@@ -154,6 +150,7 @@ def increment_version(
         else:
             raise ValueError(f"Invalid prerelease type: {prerelease_type}")
     
+    # No prerelease type specified - this shouldn't happen in normal flow
     return f"{major}.{minor}.{patch}"
 
 
@@ -286,21 +283,11 @@ def push_to_github(version: str, dry_run: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Create a new release")
+    parser = argparse.ArgumentParser(description="Create a new release or prerelease")
     parser.add_argument(
-        "--patch",
+        "--release",
         action="store_true",
-        help="Increment patch version (1.2.0 -> 1.2.1)",
-    )
-    parser.add_argument(
-        "--minor",
-        action="store_true",
-        help="Increment minor version (1.2.0 -> 1.3.0)",
-    )
-    parser.add_argument(
-        "--major",
-        action="store_true",
-        help="Increment major version (1.2.0 -> 2.0.0)",
+        help="Create a release by removing prerelease suffix (e.g., 1.2.1-b3 -> 1.2.1)",
     )
     parser.add_argument(
         "--dev",
@@ -311,17 +298,17 @@ def main() -> None:
     parser.add_argument(
         "--alpha",
         action="store_true",
-        help="Create alpha version (e.g., 1.2.1a1)",
+        help="Create alpha version (e.g., 1.2.1-a1)",
     )
     parser.add_argument(
         "--beta",
         action="store_true",
-        help="Create beta version (e.g., 1.2.1b1)",
+        help="Create beta version (e.g., 1.2.1-b1)",
     )
     parser.add_argument(
         "--rc",
         action="store_true",
-        help="Create release candidate (e.g., 1.2.1rc1)",
+        help="Create release candidate (e.g., 1.2.1-rc1)",
     )
     parser.add_argument(
         "--dry-run",
@@ -330,19 +317,14 @@ def main() -> None:
     )
     args = parser.parse_args()
     
-    # Determine bump type
-    bump_types = [args.patch, args.minor, args.major]
-    if sum(bump_types) != 1:
-        parser.error("Exactly one of --patch, --minor, or --major must be specified")
+    # Determine action type
+    action_types = [args.release, args.dev, args.alpha, args.beta, args.rc]
+    if sum(action_types) != 1:
+        parser.error("Exactly one of --release, --dev, --alpha, --beta, or --rc must be specified")
     
-    bump_type = "patch" if args.patch else ("minor" if args.minor else "major")
-    
-    # Determine prerelease type
-    prerelease_types = [args.dev, args.alpha, args.beta, args.rc]
+    # Determine prerelease type (None for release)
     prerelease_type = None
-    if sum(prerelease_types) > 1:
-        parser.error("Only one prerelease type can be specified")
-    elif args.dev:
+    if args.dev:
         prerelease_type = "dev"
     elif args.alpha:
         prerelease_type = "alpha"
@@ -357,7 +339,16 @@ def main() -> None:
         print(f"Current version: {current_version}")
         
         # Calculate new version
-        new_version = increment_version(current_version, bump_type, prerelease_type)
+        if args.release:
+            # Remove prerelease suffix
+            new_version = remove_prerelease_suffix(current_version)
+            # Check if version already has no suffix
+            major, minor, patch, current_prerelease_type, _ = parse_version(current_version)
+            if not current_prerelease_type:
+                parser.error(f"Current version {current_version} is already a release version. Use prerelease types (--alpha, --beta, --rc) to create prereleases.")
+        else:
+            # Add or increment prerelease suffix
+            new_version = increment_version(current_version, prerelease_type)
         print(f"New version: {new_version}")
         
         if args.dry_run:
@@ -369,7 +360,7 @@ def main() -> None:
             print("✓ Git repository is clean")
         
         # Check changelog (only for release versions, not prereleases)
-        if not prerelease_type and not args.dry_run:
+        if args.release and not args.dry_run:
             check_changelog(new_version)
             print(f"✓ CHANGELOG.md contains version {new_version}")
         
@@ -390,16 +381,19 @@ def main() -> None:
         # Push to GitHub
         if not args.dry_run:
             push_to_github(new_version, dry_run=args.dry_run)
-            if prerelease_type == "dev":
-                print(f"\n✓ Dev version {new_version} committed successfully!")
-                print("(No tag created for dev versions)")
-            else:
+            if args.release:
                 print(f"\n✓ Release {new_version} created successfully!")
                 print("GitHub Actions will automatically create a release.")
                 print("After successful release, GitHub Actions will create the next dev version.")
+            elif prerelease_type == "dev":
+                print(f"\n✓ Dev version {new_version} committed successfully!")
+                print("(No tag created for dev versions)")
+            else:
+                print(f"\n✓ Pre-release {new_version} created successfully!")
+                print("GitHub Actions will automatically create a pre-release.")
         else:
             print("\n[DRY RUN] No changes were made.")
-            if not prerelease_type:
+            if args.release:
                 # Show what would happen after release
                 major, minor, patch, _, _ = parse_version(new_version)
                 next_dev_version = f"{major}.{minor}.{patch + 1}-dev"

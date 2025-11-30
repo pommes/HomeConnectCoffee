@@ -163,13 +163,11 @@ python -m scripts.brew_espresso --fill-ml 50 --poll
 | `make cert_install` | Installs certificate in Mac keychain |
 | `make cert_export` | Opens Finder with certificate for AirDrop transfer |
 | `make clean_tokens` | Deletes the stored tokens |
-| `make release-patch` | Creates a patch release (1.2.0 → 1.2.1) |
-| `make release-minor` | Creates a minor release (1.2.0 → 1.3.0) |
-| `make release-major` | Creates a major release (1.2.0 → 2.0.0) |
-| `make release-dev` | Creates a development version (rarely needed) |
-| `make release-alpha` | Creates an alpha pre-release |
-| `make release-beta` | Creates a beta pre-release |
-| `make release-rc` | Creates a release candidate |
+| `make release` | Creates a release by removing prerelease suffix (e.g., 1.2.1-b3 → 1.2.1) |
+| `make release-dev` | Creates a development version (rarely needed, auto-created after release) |
+| `make release-alpha` | Creates an alpha pre-release (e.g., 1.2.1 → 1.2.1-a1) |
+| `make release-beta` | Creates a beta pre-release (e.g., 1.2.1 → 1.2.1-b1) |
+| `make release-rc` | Creates a release candidate (e.g., 1.2.1 → 1.2.1-rc1) |
 
 ### Examples
 
@@ -392,21 +390,33 @@ The project uses automated release management with version tracking in the `VERS
 
 ### Creating a Release
 
+A release simply removes the prerelease suffix from the current version:
+
 ```bash
-# Patch release (1.2.0 → 1.2.1)
-make release-patch
+# Release (removes prerelease suffix, e.g., 1.2.1-b3 → 1.2.1)
+make release
+```
 
-# Minor release (1.2.0 → 1.3.0)
-make release-minor
+**Example workflow:**
+```bash
+# 1. Development
+1.2.1-dev
 
-# Major release (1.2.0 → 2.0.0)
-make release-major
+# 2. Beta testing
+make release-beta  # → 1.2.1-b1
+make release-beta  # → 1.2.1-b2
+make release-beta  # → 1.2.1-b3
+
+# 3. Final release
+make release  # → 1.2.1
+
+# 4. Automatically: GitHub Actions creates 1.2.2-dev
 ```
 
 The release script will:
 1. Check that the repository is clean and on the main branch
 2. Verify that `CHANGELOG.md` contains the new version
-3. Update the `VERSION` file
+3. Remove the prerelease suffix from the `VERSION` file
 4. Create a git commit and tag
 5. Push to GitHub
 6. GitHub Actions will automatically create a GitHub release
@@ -429,10 +439,15 @@ This ensures your local `VERSION` file matches the automatically created dev ver
 Pre-releases (alpha, beta, rc) are tagged and create GitHub pre-releases, but do not trigger automatic dev version creation:
 
 ```bash
-make release-alpha  # Creates 1.2.1a1
-make release-beta   # Creates 1.2.1b1
-make release-rc     # Creates 1.2.1rc1
+make release-alpha  # Creates 1.2.1-a1 (or increments if already alpha)
+make release-beta   # Creates 1.2.1-b1 (or increments if already beta)
+make release-rc     # Creates 1.2.1-rc1 (or increments if already rc)
 ```
+
+**Note:** If you're already on a prerelease of the same type, the number is incremented:
+- `1.2.1-b2` → `make release-beta` → `1.2.1-b3`
+- If you're on a different prerelease type, it creates a new prerelease starting at 1:
+- `1.2.1-b3` → `make release-alpha` → `1.2.1-a1`
 
 ### Development Versions
 
