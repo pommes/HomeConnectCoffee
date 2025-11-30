@@ -36,17 +36,35 @@ def _parse_version(version_str: str) -> tuple[int, int, int, str, int]:
         version_str = parts[0]
         prerelease_type = "dev"
         prerelease_num = 0  # Dev versions don't have numbers
-    elif "a" in version_str and not version_str.endswith("a"):
+    elif "-a" in version_str:
+        parts = version_str.split("-a")
+        version_str = parts[0]
+        prerelease_type = "alpha"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif "-b" in version_str:
+        parts = version_str.split("-b")
+        version_str = parts[0]
+        prerelease_type = "beta"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif "-rc" in version_str:
+        parts = version_str.split("-rc")
+        version_str = parts[0]
+        prerelease_type = "rc"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif "a" in version_str and not version_str.endswith("a") and "-" not in version_str:
+        # Legacy format without hyphen (backward compatibility)
         parts = version_str.split("a")
         version_str = parts[0]
         prerelease_type = "alpha"
         prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    elif "b" in version_str and not version_str.endswith("b"):
+    elif "b" in version_str and not version_str.endswith("b") and "-" not in version_str:
+        # Legacy format without hyphen (backward compatibility)
         parts = version_str.split("b")
         version_str = parts[0]
         prerelease_type = "beta"
         prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    elif "rc" in version_str:
+    elif "rc" in version_str and "-" not in version_str:
+        # Legacy format without hyphen (backward compatibility)
         parts = version_str.split("rc")
         version_str = parts[0]
         prerelease_type = "rc"

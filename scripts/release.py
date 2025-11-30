@@ -40,6 +40,7 @@ def parse_version(version_str: str) -> tuple[int, int, int, str, int]:
     prerelease_num = 0
     
     # Extract prerelease info
+    # Support both formats: with hyphen (1.2.1-b2) and without (1.2.1b2) for backward compatibility
     if "-dev" in version_str:
         parts = version_str.split("-dev")
         version_str = parts[0]
@@ -51,17 +52,35 @@ def parse_version(version_str: str) -> tuple[int, int, int, str, int]:
         version_str = parts[0]
         prerelease_type = "dev"
         prerelease_num = 0  # Dev versions don't have numbers
-    elif "a" in version_str and not version_str.endswith("a"):
+    elif "-a" in version_str:
+        parts = version_str.split("-a")
+        version_str = parts[0]
+        prerelease_type = "alpha"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif "-b" in version_str:
+        parts = version_str.split("-b")
+        version_str = parts[0]
+        prerelease_type = "beta"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif "-rc" in version_str:
+        parts = version_str.split("-rc")
+        version_str = parts[0]
+        prerelease_type = "rc"
+        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    elif "a" in version_str and not version_str.endswith("a") and "-" not in version_str:
+        # Legacy format without hyphen (backward compatibility)
         parts = version_str.split("a")
         version_str = parts[0]
         prerelease_type = "alpha"
         prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    elif "b" in version_str and not version_str.endswith("b"):
+    elif "b" in version_str and not version_str.endswith("b") and "-" not in version_str:
+        # Legacy format without hyphen (backward compatibility)
         parts = version_str.split("b")
         version_str = parts[0]
         prerelease_type = "beta"
         prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    elif "rc" in version_str:
+    elif "rc" in version_str and "-" not in version_str:
+        # Legacy format without hyphen (backward compatibility)
         parts = version_str.split("rc")
         version_str = parts[0]
         prerelease_type = "rc"
@@ -101,11 +120,11 @@ def increment_version(
                 # Dev versions don't have numbers, just return the same
                 return f"{major}.{minor}.{patch}-dev"
             elif prerelease_type == "alpha":
-                return f"{major}.{minor}.{patch}a{current_prerelease_num + 1}"
+                return f"{major}.{minor}.{patch}-a{current_prerelease_num + 1}"
             elif prerelease_type == "beta":
-                return f"{major}.{minor}.{patch}b{current_prerelease_num + 1}"
+                return f"{major}.{minor}.{patch}-b{current_prerelease_num + 1}"
             elif prerelease_type == "rc":
-                return f"{major}.{minor}.{patch}rc{current_prerelease_num + 1}"
+                return f"{major}.{minor}.{patch}-rc{current_prerelease_num + 1}"
         # Different prerelease type, use base version
         pass
     
@@ -127,11 +146,11 @@ def increment_version(
         if prerelease_type == "dev":
             return f"{major}.{minor}.{patch}-dev"
         elif prerelease_type == "alpha":
-            return f"{major}.{minor}.{patch}a1"
+            return f"{major}.{minor}.{patch}-a1"
         elif prerelease_type == "beta":
-            return f"{major}.{minor}.{patch}b1"
+            return f"{major}.{minor}.{patch}-b1"
         elif prerelease_type == "rc":
-            return f"{major}.{minor}.{patch}rc1"
+            return f"{major}.{minor}.{patch}-rc1"
         else:
             raise ValueError(f"Invalid prerelease type: {prerelease_type}")
     
@@ -190,8 +209,8 @@ def check_changelog(version: str) -> None:
 def create_git_tag(version: str, dry_run: bool = False) -> None:
     """Create git tag for version.
     
-    For prerelease versions, use '-' instead of '.' in tag (e.g., v1.2.1-a1).
     Dev versions are NOT tagged (only committed).
+    Pre-release versions already use hyphen format (e.g., 1.2.1-b2).
     """
     # Check if this is a dev version - don't create tags for dev versions
     if "-dev" in version or ".dev" in version:
@@ -201,17 +220,8 @@ def create_git_tag(version: str, dry_run: bool = False) -> None:
             print(f"Skipping tag creation for dev version: {version}")
         return
     
-    # Convert version to tag format
-    # For prerelease: 1.2.1a1 -> v1.2.1-a1, 1.2.1b1 -> v1.2.1-b1, 1.2.1rc1 -> v1.2.1-rc1
-    tag_version = version
-    if "a" in tag_version and not tag_version.endswith("a"):
-        tag_version = tag_version.replace("a", "-a", 1)
-    elif "b" in tag_version and not tag_version.endswith("b"):
-        tag_version = tag_version.replace("b", "-b", 1)
-    elif "rc" in tag_version:
-        tag_version = tag_version.replace("rc", "-rc")
-    
-    tag = f"v{tag_version}"
+    # Version already uses hyphen format, just add 'v' prefix
+    tag = f"v{version}"
     
     if dry_run:
         print(f"[DRY RUN] Would create tag: {tag}")
@@ -250,6 +260,7 @@ def push_to_github(version: str, dry_run: bool = False) -> None:
     """Push commits and tags to GitHub.
     
     Dev versions only push commits, no tags.
+    Version already uses hyphen format, so tag is just v{version}.
     """
     # Check if this is a dev version - don't push tags for dev versions
     is_dev = "-dev" in version or ".dev" in version
@@ -258,14 +269,7 @@ def push_to_github(version: str, dry_run: bool = False) -> None:
         if is_dev:
             print(f"[DRY RUN] Would push commits only (no tag) for dev version: {version}")
         else:
-            tag_version = version
-            if "a" in tag_version and not tag_version.endswith("a"):
-                tag_version = tag_version.replace("a", "-a", 1)
-            elif "b" in tag_version and not tag_version.endswith("b"):
-                tag_version = tag_version.replace("b", "-b", 1)
-            elif "rc" in tag_version:
-                tag_version = tag_version.replace("rc", "-rc")
-            tag = f"v{tag_version}"
+            tag = f"v{version}"
             print(f"[DRY RUN] Would push commits and tag {tag} to GitHub")
         return
     
@@ -275,15 +279,8 @@ def push_to_github(version: str, dry_run: bool = False) -> None:
     if is_dev:
         print(f"Pushed commits to GitHub (no tag for dev version)")
     else:
-        # Convert version to tag format and push tag
-        tag_version = version
-        if "a" in tag_version and not tag_version.endswith("a"):
-            tag_version = tag_version.replace("a", "-a", 1)
-        elif "b" in tag_version and not tag_version.endswith("b"):
-            tag_version = tag_version.replace("b", "-b", 1)
-        elif "rc" in tag_version:
-            tag_version = tag_version.replace("rc", "-rc")
-        tag = f"v{tag_version}"
+        # Version already uses hyphen format, just add 'v' prefix
+        tag = f"v{version}"
         subprocess.run(["git", "push", "origin", tag], check=True)
         print(f"Pushed to GitHub (tag: {tag})")
 

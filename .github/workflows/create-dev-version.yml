@@ -58,19 +58,32 @@ jobs:
             version_str = version_str.strip()
             
             # Extract prerelease info (should not happen for releases, but handle it)
+            # Support both formats: with hyphen (1.2.1-b2) and without (1.2.1b2) for backward compatibility
             if "-dev" in version_str:
                 parts = version_str.split("-dev")
                 version_str = parts[0]
             elif ".dev" in version_str:
                 parts = version_str.split(".dev")
                 version_str = parts[0]
-            elif "a" in version_str and not version_str.endswith("a"):
+            elif "-a" in version_str:
+                parts = version_str.split("-a")
+                version_str = parts[0]
+            elif "-b" in version_str:
+                parts = version_str.split("-b")
+                version_str = parts[0]
+            elif "-rc" in version_str:
+                parts = version_str.split("-rc")
+                version_str = parts[0]
+            elif "a" in version_str and not version_str.endswith("a") and "-" not in version_str:
+                # Legacy format without hyphen (backward compatibility)
                 parts = version_str.split("a")
                 version_str = parts[0]
-            elif "b" in version_str and not version_str.endswith("b"):
+            elif "b" in version_str and not version_str.endswith("b") and "-" not in version_str:
+                # Legacy format without hyphen (backward compatibility)
                 parts = version_str.split("b")
                 version_str = parts[0]
-            elif "rc" in version_str:
+            elif "rc" in version_str and "-" not in version_str:
+                # Legacy format without hyphen (backward compatibility)
                 parts = version_str.split("rc")
                 version_str = parts[0]
             
