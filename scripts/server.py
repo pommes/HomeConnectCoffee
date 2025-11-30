@@ -17,6 +17,7 @@ import threading
 import time
 from pathlib import Path
 
+from homeconnect_coffee import __version__, get_version_type, is_release_version
 from homeconnect_coffee.api_monitor import get_monitor
 from homeconnect_coffee.errors import ErrorHandler
 from homeconnect_coffee.handlers import RequestRouter
@@ -132,6 +133,14 @@ def main() -> None:
         server.socket = context.wrap_socket(server.socket, server_side=True)
         protocol = "https"
 
+    # Print version information
+    version_type = get_version_type()
+    if is_release_version():
+        print(f"☕ HomeConnect Coffee Server v{__version__} starting...")
+    else:
+        version_type_upper = version_type.upper()
+        print(f"☕ HomeConnect Coffee Server v{__version__} ({version_type_upper}) starting...")
+    
     print(f"☕ HomeConnect Coffee Server running on {protocol}://{args.host}:{args.port}")
     print(f"   Endpoints:")
     print(f"   - GET  /cert        - Download SSL certificate (public)")

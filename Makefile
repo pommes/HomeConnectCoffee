@@ -12,12 +12,13 @@ SCRIPT_STATUS := $(THIS_DIR)/scripts/device_status.py
 SCRIPT_EVENTS := $(THIS_DIR)/scripts/events.py
 SCRIPT_WAKE := $(THIS_DIR)/scripts/wake_device.py
 SCRIPT_SERVER := $(THIS_DIR)/scripts/server.py
+SCRIPT_RELEASE := $(THIS_DIR)/scripts/release.py
 
 FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history test test-unit test-cov
+.PHONY: init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history test test-unit test-cov release-patch release-minor release-major release-dev release-alpha release-beta release-rc
 
 init: init_venv install_deps
 
@@ -116,4 +117,33 @@ test-unit: init
 test-cov: init
 	@echo "Running tests with coverage report..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest --cov=src/homeconnect_coffee --cov-report=term-missing --cov-report=html
+
+# Release targets
+release-patch: init
+	@echo "Creating patch release..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --patch $(RELEASE_ARGS)
+
+release-minor: init
+	@echo "Creating minor release..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --minor $(RELEASE_ARGS)
+
+release-major: init
+	@echo "Creating major release..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --major $(RELEASE_ARGS)
+
+release-dev: init
+	@echo "Creating development release..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --patch --dev $(RELEASE_ARGS)
+
+release-alpha: init
+	@echo "Creating alpha release..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --patch --alpha $(RELEASE_ARGS)
+
+release-beta: init
+	@echo "Creating beta release..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --patch --beta $(RELEASE_ARGS)
+
+release-rc: init
+	@echo "Creating release candidate..."
+	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --patch --rc $(RELEASE_ARGS)
 

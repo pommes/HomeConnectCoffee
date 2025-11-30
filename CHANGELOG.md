@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-11-30
+
+### Added
+
+#### Coffee Brewing Enhancements
+- **Commit:** [`ac99a46`](https://github.com/pommes/HomeConnectCoffee/commit/ac99a46)
+- Extended `/brew` endpoint to support all available coffee programs
+- Added support for: espresso, coffee (Cafè Crema), cappuccino, latte macchiato, caffè latte, americano, hot water, hot milk, milk foam, ristretto, lungo
+- `program` parameter for selecting coffee type (default: espresso for backward compatibility)
+- `fill_ml` parameter only supported for espresso and coffee programs
+- Generic `brew_program()` method in `CoffeeService` for all programs
+- Comprehensive unit tests for new brewing functionality
+- Updated API documentation with examples for all programs
+
+#### Dashboard UI Enhancements
+- **Commit:** [`452f1e2`](https://github.com/pommes/HomeConnectCoffee/commit/452f1e2)
+- Live program progress bar visualization
+- Progress bar updates in real-time based on `BSH.Common.Option.ProgramProgress` events
+- Progress bar automatically hides when no active program
+- Program name formatting for better readability
+  - Raw API keys (e.g., "Beverage.espresso") displayed as "Espresso"
+  - "Coffee" program displayed as "Cafè Crema"
+  - Cleaning modes formatted (e.g., "ApplianceOnRinsing" → "Rinsing")
+- CSS animations for active progress bar
+
+#### Event History Improvements
+- **Commit:** [`452f1e2`](https://github.com/pommes/HomeConnectCoffee/commit/452f1e2)
+- Script `fix_program_events.py` to retroactively add missing `program_started` events
+- Enhanced `EventStreamManager` to handle both dictionary and string program keys
+- Improved event tracking completeness
+
+#### Local Timezone Support
+- **Commit:** [`ac99a46`](https://github.com/pommes/HomeConnectCoffee/commit/ac99a46)
+- Event timestamps now displayed in browser's local timezone instead of UTC
+- Automatic timezone detection using browser's `Date` API
+- Format remains ISO-like (YYYY-MM-DD HH:MM:SS) but in local time
+
+#### Project Documentation and Badges
+- **Commit:** [`ab860a4`](https://github.com/pommes/HomeConnectCoffee/commit/ab860a4)
+- Added MIT License file
+- Added license badge to README.md
+- Added Python version badge
+- Added GitHub stars and forks badges
+- Improved project visibility and professional appearance
+
+- **Commit:** [`5d60d40`](https://github.com/pommes/HomeConnectCoffee/commit/5d60d40)
+- Added release version badge to README.md
+- Better visibility of current project version
+
+### Changed
+
+#### Event Log Sorting
+- **Commit:** [`7baa1a2`](https://github.com/pommes/HomeConnectCoffee/commit/7baa1a2)
+- Enhanced event sorting logic for chronological order (newest first)
+- Improved handling of events with identical timestamps using `value` as secondary sort key
+- Optimized initial event loading with pre-sorting before DOM insertion
+- Better event insertion logic to maintain correct order during lazy loading
+- Fixed event ordering issues after server restart
+
+#### Timestamp Formatting
+- **Commit:** [`ca418f4`](https://github.com/pommes/HomeConnectCoffee/commit/ca418f4)
+- Changed from UTC to ISO 8601 format (YYYY-MM-DD HH:MM:SS)
+- **Commit:** [`ac99a46`](https://github.com/pommes/HomeConnectCoffee/commit/ac99a46)
+- Further improved to use local timezone instead of UTC
+
+#### Error Handling
+- **Commit:** [`ca418f4`](https://github.com/pommes/HomeConnectCoffee/commit/ca418f4)
+- Improved device offline detection
+- Connection errors (`ConnectionError`, `Timeout`) now classified as 503 Service Unavailable
+- Better user feedback: "Device offline" instead of generic "Error 500"
+- Enhanced error classification in `ErrorHandler` for connection-related exceptions
+
+### Fixed
+
+- **Commit:** [`7baa1a2`](https://github.com/pommes/HomeConnectCoffee/commit/7baa1a2)
+- Fixed event log not displaying events after server restart
+- Fixed incorrect event ordering (newer timestamps appearing under older ones)
+- Fixed event sorting for events within the same second
+
+- **Commit:** [`ca418f4`](https://github.com/pommes/HomeConnectCoffee/commit/ca418f4)
+- Fixed incorrect error classification for device offline scenarios
+- Fixed `RuntimeError` exceptions with 429 information being incorrectly classified
+
+#### CI/CD Workflow Fixes
+- **Commit:** [`113a75e`](https://github.com/pommes/HomeConnectCoffee/commit/113a75e)
+- Fixed release workflow: Explicitly set `tag_name` parameter
+- Removed redundant `GITHUB_TOKEN` environment variable (auto-provided by GitHub Actions)
+
+- **Commit:** [`3bf8e43`](https://github.com/pommes/HomeConnectCoffee/commit/3bf8e43)
+- Fixed release workflow: Added `contents:write` permission for creating releases
+- Resolved 403 errors when creating GitHub releases
+
 ## [1.1.0] - 2025-11-28
 
 ### Added
@@ -228,6 +320,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token-based authentication for protected endpoints
 - Secrets in `.env` and `tokens.json` (not in Git)
 
-[Unreleased]: https://github.com/pommes/HomeConnectCoffee/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/pommes/HomeConnectCoffee/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/pommes/HomeConnectCoffee/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/pommes/HomeConnectCoffee/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/pommes/HomeConnectCoffee/compare/9448183...d2b9420
