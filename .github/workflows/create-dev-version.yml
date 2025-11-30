@@ -1,0 +1,122 @@
+name: Create Dev Version
+
+on:
+  release:
+    types: [published]  # Triggered when a GitHub release is published
+
+jobs:
+  create-dev-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to commit and push
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Extract version from release tag
+      id: version
+      run: |
+        # Get the tag name from the release event
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        # Remove 'v' prefix if present
+        VERSION_NUMBER=${TAG_NAME#v}
+        echo "version=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+        echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "Extracted version: $VERSION_NUMBER from tag: $TAG_NAME"
+        
+        # Check if this is a prerelease (contains '-')
+        if [[ "$VERSION_NUMBER" == *"-"* ]]; then
+          echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          echo "Skipping dev version creation for prerelease: $VERSION_NUMBER"
+        else
+          echo "is_prerelease=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Calculate next dev version
+      id: next_dev
+      if: steps.version.outputs.is_prerelease == 'false'
+      env:
+        PYTHONPATH: src
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        
+        # Use Python script to parse version (same logic as release.py)
+        NEXT_DEV_VERSION=$(python3 << EOF
+        import sys
+        sys.path.insert(0, 'src')
+        
+        def parse_version(version_str):
+            """Parse version string into components."""
+            version_str = version_str.strip()
+            
+            # Extract prerelease info (should not happen for releases, but handle it)
+            if "-dev" in version_str:
+                parts = version_str.split("-dev")
+                version_str = parts[0]
+            elif ".dev" in version_str:
+                parts = version_str.split(".dev")
+                version_str = parts[0]
+            elif "a" in version_str and not version_str.endswith("a"):
+                parts = version_str.split("a")
+                version_str = parts[0]
+            elif "b" in version_str and not version_str.endswith("b"):
+                parts = version_str.split("b")
+                version_str = parts[0]
+            elif "rc" in version_str:
+                parts = version_str.split("rc")
+                version_str = parts[0]
+            
+            # Parse version numbers
+            version_parts = version_str.split(".")
+            major = int(version_parts[0]) if len(version_parts) > 0 and version_parts[0].isdigit() else 0
+            minor = int(version_parts[1]) if len(version_parts) > 1 and version_parts[1].isdigit() else 0
+            patch = int(version_parts[2]) if len(version_parts) > 2 and version_parts[2].isdigit() else 0
+            
+            return (major, minor, patch)
+        
+        major, minor, patch = parse_version("$VERSION")
+        
+        # Increment patch version
+        patch += 1
+        
+        # Create dev version
+        next_dev_version = f"{major}.{minor}.{patch}-dev"
+        
+        print(next_dev_version)
+        EOF
+        )
+        
+        echo "next_dev_version=$NEXT_DEV_VERSION" >> $GITHUB_OUTPUT
+        echo "Next dev version: $NEXT_DEV_VERSION"
+
+    - name: Update VERSION file
+      if: steps.version.outputs.is_prerelease == 'false'
+      run: |
+        echo "${{ steps.next_dev.outputs.next_dev_version }}" > VERSION
+        echo "Updated VERSION file to ${{ steps.next_dev.outputs.next_dev_version }}"
+
+    - name: Commit and push dev version
+      if: steps.version.outputs.is_prerelease == 'false'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add VERSION
+        git commit -m "Bump version to ${{ steps.next_dev.outputs.next_dev_version }}"
+        git push
+
+    - name: Summary
+      if: steps.version.outputs.is_prerelease == 'false'
+      run: |
+        echo "✓ Dev version ${{ steps.next_dev.outputs.next_dev_version }} created and committed"
+        echo ""
+        echo "⚠️  IMPORTANT: Remember to pull the changes locally:"
+        echo "   git pull"
+

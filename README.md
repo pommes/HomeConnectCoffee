@@ -9,6 +9,8 @@
 
 This project demonstrates how to start your Bosch CTL7181B0 (and other HomeConnect coffee machines) via Python script using the official HomeConnect Cloud API.
 
+![Dashboard UI](ui.png)
+
 ## Prerequisites
 
 1. **HomeConnect Developer Account** at [developer.home-connect.com](https://developer.home-connect.com)
@@ -161,6 +163,13 @@ python -m scripts.brew_espresso --fill-ml 50 --poll
 | `make cert_install` | Installs certificate in Mac keychain |
 | `make cert_export` | Opens Finder with certificate for AirDrop transfer |
 | `make clean_tokens` | Deletes the stored tokens |
+| `make release-patch` | Creates a patch release (1.2.0 → 1.2.1) |
+| `make release-minor` | Creates a minor release (1.2.0 → 1.3.0) |
+| `make release-major` | Creates a major release (1.2.0 → 2.0.0) |
+| `make release-dev` | Creates a development version (rarely needed) |
+| `make release-alpha` | Creates an alpha pre-release |
+| `make release-beta` | Creates a beta pre-release |
+| `make release-rc` | Creates a release candidate |
 
 ### Examples
 
@@ -376,6 +385,62 @@ curl https://your-hostname.local:8080/wake?token=my-token
   - Default: `espresso` with `fill_ml=50` (backward compatible)
 - `GET /brew?program=coffee&fill_ml=200` - Alternative GET request format
 - `GET /health` - Health check
+
+## Release Management
+
+The project uses automated release management with version tracking in the `VERSION` file.
+
+### Creating a Release
+
+```bash
+# Patch release (1.2.0 → 1.2.1)
+make release-patch
+
+# Minor release (1.2.0 → 1.3.0)
+make release-minor
+
+# Major release (1.2.0 → 2.0.0)
+make release-major
+```
+
+The release script will:
+1. Check that the repository is clean and on the main branch
+2. Verify that `CHANGELOG.md` contains the new version
+3. Update the `VERSION` file
+4. Create a git commit and tag
+5. Push to GitHub
+6. GitHub Actions will automatically create a GitHub release
+
+### Automatic Dev Version Creation
+
+After a successful release, GitHub Actions automatically creates the next development version:
+- Release `1.2.1` → Dev version `1.2.2-dev` is automatically created
+- This happens only for release versions (not for pre-releases like alpha/beta/rc)
+
+**Important:** After a release, remember to pull the changes locally:
+```bash
+git pull
+```
+
+This ensures your local `VERSION` file matches the automatically created dev version.
+
+### Pre-Releases
+
+Pre-releases (alpha, beta, rc) are tagged and create GitHub pre-releases, but do not trigger automatic dev version creation:
+
+```bash
+make release-alpha  # Creates 1.2.1a1
+make release-beta   # Creates 1.2.1b1
+make release-rc     # Creates 1.2.1rc1
+```
+
+### Development Versions
+
+Development versions (`-dev` suffix) are committed but not tagged. They are typically created automatically after releases, but can be created manually if needed:
+
+```bash
+make release-dev  # Creates 1.2.1-dev (rarely needed)
+```
 
 ## Further Ideas
 

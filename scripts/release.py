@@ -44,13 +44,13 @@ def parse_version(version_str: str) -> tuple[int, int, int, str, int]:
         parts = version_str.split("-dev")
         version_str = parts[0]
         prerelease_type = "dev"
-        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        prerelease_num = 0  # Dev versions don't have numbers
     elif ".dev" in version_str:
         # Legacy format support
         parts = version_str.split(".dev")
         version_str = parts[0]
         prerelease_type = "dev"
-        prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        prerelease_num = 0  # Dev versions don't have numbers
     elif "a" in version_str and not version_str.endswith("a"):
         parts = version_str.split("a")
         version_str = parts[0]
@@ -98,7 +98,8 @@ def increment_version(
         # Already a prerelease, increment the prerelease number if same type
         if prerelease_type == current_prerelease_type:
             if prerelease_type == "dev":
-                return f"{major}.{minor}.{patch}-dev{current_prerelease_num + 1}"
+                # Dev versions don't have numbers, just return the same
+                return f"{major}.{minor}.{patch}-dev"
             elif prerelease_type == "alpha":
                 return f"{major}.{minor}.{patch}a{current_prerelease_num + 1}"
             elif prerelease_type == "beta":
@@ -124,7 +125,7 @@ def increment_version(
     # Add prerelease marker if specified
     if prerelease_type:
         if prerelease_type == "dev":
-            return f"{major}.{minor}.{patch}-dev1"
+            return f"{major}.{minor}.{patch}-dev"
         elif prerelease_type == "alpha":
             return f"{major}.{minor}.{patch}a1"
         elif prerelease_type == "beta":
@@ -307,7 +308,8 @@ def main() -> None:
     parser.add_argument(
         "--dev",
         action="store_true",
-        help="Create development version (e.g., 1.2.1-dev1). Dev versions are committed but NOT tagged.",
+        help="Create development version (e.g., 1.2.1-dev). Dev versions are committed but NOT tagged. "
+             "Note: Dev versions are automatically created after each release, so manual creation is rarely needed.",
     )
     parser.add_argument(
         "--alpha",
@@ -397,8 +399,14 @@ def main() -> None:
             else:
                 print(f"\n✓ Release {new_version} created successfully!")
                 print("GitHub Actions will automatically create a release.")
+                print("After successful release, GitHub Actions will create the next dev version.")
         else:
             print("\n[DRY RUN] No changes were made.")
+            if not prerelease_type:
+                # Show what would happen after release
+                major, minor, patch, _, _ = parse_version(new_version)
+                next_dev_version = f"{major}.{minor}.{patch + 1}-dev"
+                print(f"[DRY RUN] After release, GitHub Actions would create dev version: {next_dev_version}")
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
