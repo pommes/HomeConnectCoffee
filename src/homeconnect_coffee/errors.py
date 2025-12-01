@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ColoredFormatter(logging.Formatter):
-    """Logging formatter with colors for WARNING (orange) and ERROR (red).
+    """Logging formatter with colors for DEBUG (gray), WARNING (orange) and ERROR (red).
     
     Colors are only used when:
     - The terminal supports colors (isatty())
@@ -28,6 +28,7 @@ class ColoredFormatter(logging.Formatter):
     
     # ANSI escape codes for colors
     RESET = '\033[0m'
+    GRAY = '\033[38;5;244m'  # Light gray for DEBUG (brighter for dark backgrounds)
     ORANGE = '\033[38;5;208m'  # Orange for WARNING
     RED = '\033[31m'  # Red for ERROR
     BOLD = '\033[1m'
@@ -65,7 +66,10 @@ class ColoredFormatter(logging.Formatter):
         
         # Add colors if enabled
         if self._use_colors:
-            if record.levelno == logging.WARNING:
+            if record.levelno == logging.DEBUG:
+                # DEBUG: Light gray
+                log_message = f"{self.GRAY}{log_message}{self.RESET}"
+            elif record.levelno == logging.WARNING:
                 # WARNING: Orange
                 log_message = f"{self.ORANGE}{log_message}{self.RESET}"
             elif record.levelno >= logging.ERROR:
@@ -97,12 +101,13 @@ class ErrorCode(IntEnum):
 class ErrorHandler:
     """Central error handling class."""
     
-    def __init__(self, enable_logging: bool = True, log_sensitive: bool = False) -> None:
+    def __init__(self, enable_logging: bool = True, log_sensitive: bool = False, log_level: int = logging.INFO) -> None:
         """Initializes the ErrorHandler.
         
         Args:
             enable_logging: Whether logging is enabled
             log_sensitive: Whether sensitive information should be logged
+            log_level: Logging level (default: INFO, use logging.DEBUG for debug mode)
         """
         self.enable_logging = enable_logging
         self.log_sensitive = log_sensitive
@@ -111,7 +116,7 @@ class ErrorHandler:
         if enable_logging:
             # Create root logger handler with colors
             root_logger = logging.getLogger()
-            root_logger.setLevel(logging.INFO)
+            root_logger.setLevel(log_level)
             
             # Remove existing handlers (if basicConfig was already called)
             if root_logger.handlers:
@@ -119,7 +124,7 @@ class ErrorHandler:
             
             # Create console handler with color formatter
             console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setLevel(logging.INFO)
+            console_handler.setLevel(log_level)
             
             formatter = ColoredFormatter(
                 fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

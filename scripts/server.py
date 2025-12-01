@@ -52,6 +52,13 @@ def main() -> None:
         help="Disable request logging",
     )
     parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Set logging level (default: INFO, or set LOG_LEVEL environment variable)",
+    )
+    parser.add_argument(
         "--api-token",
         type=str,
         default=None,
@@ -73,9 +80,21 @@ def main() -> None:
 
     # Initialize error handler
     log_sensitive = os.getenv("LOG_SENSITIVE", "false").lower() == "true"
+    
+    # Determine log level from argument or environment variable
+    log_level_str = args.log_level or os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+    }
+    log_level = log_level_map.get(log_level_str, logging.INFO)
+    
     error_handler = ErrorHandler(
         enable_logging=not args.no_log,
         log_sensitive=log_sensitive,
+        log_level=log_level,
     )
 
     # API token from argument or environment variable
@@ -153,7 +172,7 @@ def main() -> None:
     print(f"   - GET  /events      - Live events stream (SSE)")
     print(f"   - POST /brew        - Starts an espresso (JSON: {{\"fill_ml\": 50}})")
     if RequestRouter.enable_logging:
-        print(f"   - Logging: enabled")
+        print(f"   - Logging: enabled (level: {log_level_str})")
     else:
         print(f"   - Logging: disabled")
     if RequestRouter.api_token:

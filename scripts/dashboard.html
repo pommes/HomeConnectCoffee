@@ -1087,6 +1087,12 @@
         }
 
         function connectEventStream() {
+            // Close existing connection if any
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
             const eventsUrl = API_TOKEN
                 ? `${API_BASE}/events?token=${encodeURIComponent(API_TOKEN)}`
                 : `${API_BASE}/events`;
@@ -1113,6 +1119,7 @@
 
             eventSource.addEventListener('message', (event) => {
                 try {
+                    console.log('Received message event:', event.data);
                     const data = JSON.parse(event.data);
                     addEventToLog('message', data);
                 } catch (e) {
@@ -1122,6 +1129,7 @@
 
             eventSource.addEventListener('STATUS', (event) => {
                 try {
+                    console.log('Received STATUS event:', event.data);
                     const data = JSON.parse(event.data);
                     addEventToLog('STATUS', data);
                     // Update status which may include program changes
@@ -1134,6 +1142,7 @@
 
             eventSource.addEventListener('EVENT', (event) => {
                 try {
+                    console.log('Received EVENT event:', event.data);
                     const data = JSON.parse(event.data);
                     addEventToLog('EVENT', data);
                     
@@ -1158,6 +1167,7 @@
 
             eventSource.addEventListener('NOTIFY', (event) => {
                 try {
+                    console.log('Received NOTIFY event:', event.data);
                     const data = JSON.parse(event.data);
                     addEventToLog('NOTIFY', data);
                     
@@ -1180,6 +1190,7 @@
 
             eventSource.addEventListener('STREAM_STATUS', (event) => {
                 try {
+                    console.log('Received STREAM_STATUS event:', event.data);
                     const data = JSON.parse(event.data);
                     apiStreamConnected = data.stream_connected || false;
                     lastApiHeartbeat = data.last_heartbeat || null;

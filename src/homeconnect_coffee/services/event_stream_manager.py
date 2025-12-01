@@ -97,6 +97,8 @@ class EventStreamManager:
         
         if self.enable_logging:
             logger.info("Event stream worker started (for history persistence)...")
+            logger.info(f"Event stream manager: History manager = {self.history_manager}")
+            logger.info(f"Event stream manager: Enable logging = {self.enable_logging}")
 
     def stop(self) -> None:
         """Stops the event stream worker."""
@@ -118,6 +120,8 @@ class EventStreamManager:
         with self._clients_lock:
             if client not in self._clients:
                 self._clients.append(client)
+                if self.enable_logging:
+                    logger.info(f"Event stream manager: Added client, {len(self._clients)} client(s) connected")
 
     def remove_client(self, client: BaseHTTPRequestHandler) -> None:
         """Removes an SSE client.
@@ -128,6 +132,8 @@ class EventStreamManager:
         with self._clients_lock:
             if client in self._clients:
                 self._clients.remove(client)
+                if self.enable_logging:
+                    logger.info(f"Event stream manager: Removed client, {len(self._clients)} client(s) remaining")
 
     def broadcast_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         """Sends an event to all connected clients.
@@ -140,7 +146,12 @@ class EventStreamManager:
         
         with self._clients_lock:
             if not self._clients:
+                if self.enable_logging:
+                    logger.debug(f"broadcast_event: No clients connected for event type '{event_type}'")
                 return  # No clients connected
+            
+            if self.enable_logging:
+                logger.debug(f"broadcast_event: Sending '{event_type}' to {len(self._clients)} client(s)")
             
             disconnected_clients = []
             for client_handler in self._clients:
@@ -150,14 +161,25 @@ class EventStreamManager:
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     # Client closed connection
                     disconnected_clients.append(client_handler)
+                except Exception as e:
+                    # Log other errors but don't remove client (might be temporary)
+                    if self.enable_logging:
+                        logger.warning(f"Error sending event '{event_type}' to client: {e}")
+                    disconnected_clients.append(client_handler)
             
             # Remove disconnected clients
             for client in disconnected_clients:
                 if client in self._clients:
                     self._clients.remove(client)
+                    if self.enable_logging:
+                        logger.debug(f"broadcast_event: Removed disconnected client, {len(self._clients)} client(s) remaining")
 
     def _history_worker(self) -> None:
         """Background thread that saves events from the queue."""
+        if self.enable_logging:
+            logger.info("History worker: Started")
+        
+        saved_count = 0
         while True:
             try:
                 # Wait for event in queue (blocking, but in separate thread)
@@ -166,13 +188,23 @@ class EventStreamManager:
                 if self.history_manager:
                     try:
                         self.history_manager.add_event(event_type, data)
+                        saved_count += 1
+                        if self.enable_logging and saved_count % 10 == 0:
+                            logger.debug(f"History worker: Saved {saved_count} events to history")
+                        elif self.enable_logging:
+                            logger.debug(f"History worker: Saved event '{event_type}' to history")
                     except Exception as e:
                         if self.enable_logging:
                             logger.error(f"Error saving event to history: {e}")
+                else:
+                    if self.enable_logging:
+                        logger.warning(f"History worker: No history_manager available, skipping event '{event_type}'")
                 
                 self._history_queue.task_done()
-            except Exception:
+            except Exception as e:
                 # Timeout or other error - just continue
+                if self.enable_logging and not isinstance(e, Exception):
+                    logger.debug(f"History worker: Queue timeout (normal)")
                 pass
 
     def _update_heartbeat(self) -> None:
@@ -249,13 +281,20 @@ class EventStreamManager:
         max_backoff_seconds = 300  # Maximum 5 minutes
         consecutive_429_errors = 0
 
+        if self.enable_logging:
+            logger.info("Event stream worker: Thread started, entering main loop...")
+
         while not self._stream_stop_event.is_set():
             try:
                 # Timeout for config and client creation
                 try:
+                    if self.enable_logging:
+                        logger.info("Event stream worker: Loading config and getting access token...")
                     config = load_config()
                     client = HomeConnectClient(config)
                     token = client.get_access_token()
+                    if self.enable_logging:
+                        logger.info("Event stream worker: Successfully obtained access token")
                 except Exception as e:
                     if self.enable_logging:
                         logger.error(f"Event stream worker: Error loading config: {e}")
@@ -270,7 +309,7 @@ class EventStreamManager:
                 if self.enable_logging:
                     logger.info("Event stream worker: Connecting to HomeConnect events...")
 
-                # SSEClient needs a requests.Response, not directly a URL
+                # SSEClient needs a requests.Response with stream=True
                 try:
                     response = requests.get(
                         EVENTS_URL,
@@ -313,15 +352,25 @@ class EventStreamManager:
                     continue
 
                 if self.enable_logging:
-                    logger.info("Event stream worker: Connected, waiting for events...")
+                    logger.info(f"Event stream worker: Connected (status={response.status_code}), waiting for events...")
 
                 # Reset heartbeat on successful connection
                 self._update_heartbeat()
 
                 sse_client = SSEClient(response)
+                if self.enable_logging:
+                    logger.info("Event stream worker: SSEClient created, starting to listen for events...")
+                
+                event_count = 0
                 for event in sse_client.events():
+                    event_count += 1
+                    if self.enable_logging and event_count % 10 == 0:
+                        logger.debug(f"Event stream worker: Processed {event_count} events from SSEClient")
+                    
                     # Check if stream should be stopped or reconnect forced
                     if self._stream_stop_event.is_set():
+                        if self.enable_logging:
+                            logger.info("Event stream worker: Stream stop event set, breaking loop")
                         break
                     if self._force_reconnect:
                         if self.enable_logging:
@@ -339,7 +388,12 @@ class EventStreamManager:
 
                     # Skip events without data (except KEEP-ALIVE which we handled above)
                     if not event.data:
+                        if self.enable_logging:
+                            logger.debug(f"Event stream worker: Skipping event '{event_type}' without data")
                         continue
+                    
+                    if self.enable_logging:
+                        logger.debug(f"Event stream worker: Received event '{event_type}' with data: {event.data[:100]}...")
 
                     try:
                         payload = json.loads(event.data)
@@ -398,6 +452,8 @@ class EventStreamManager:
                                     logger.warning(f"Error adding event to queue: {e}")
 
                         # Send event to all connected clients
+                        if self.enable_logging:
+                            logger.debug(f"Event stream worker: Received event '{event_type}', broadcasting to clients...")
                         self.broadcast_event(event_type, payload)
 
                     except json.JSONDecodeError:

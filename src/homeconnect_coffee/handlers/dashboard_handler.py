@@ -173,6 +173,8 @@ class DashboardHandler:
     def _send_sse_event(router: "BaseHandler", event_type: str, data: dict) -> None:
         """Sends an SSE event.
         
+        Thread-safe: Can be called from any thread (e.g., event stream worker).
+        
         Args:
             router: The router (BaseHandler instance) with request context
             event_type: Event type
@@ -181,9 +183,15 @@ class DashboardHandler:
         try:
             event_str = f"event: {event_type}\n"
             event_str += f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+            # Use a lock if available, otherwise just write (wfile should be thread-safe)
+            # Note: wfile from BaseHTTPRequestHandler should handle concurrent writes
+            # but we add explicit flush to ensure data is sent immediately
             router.wfile.write(event_str.encode("utf-8"))
             router.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             # Client closed connection
             raise
+        except AttributeError:
+            # wfile might not be available (connection closed)
+            raise BrokenPipeError("Connection closed")
 
