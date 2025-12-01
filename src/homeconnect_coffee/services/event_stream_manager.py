@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -50,12 +51,24 @@ class EventStreamManager:
         self._stream_running = False
         self._stream_stop_event = Event()
         
+        # State for heartbeat monitoring
+        self._last_heartbeat: float = 0
+        # Allow override via environment variable for testing (default: 180 seconds = 3 minutes)
+        # KEEP-ALIVE comes every ~55s, so 180s timeout allows for ~3 missed KEEP-ALIVEs
+        heartbeat_timeout_env = os.getenv("HEARTBEAT_TEST_TIMEOUT")
+        self._heartbeat_timeout: float = (
+            float(heartbeat_timeout_env) if heartbeat_timeout_env else 180
+        )
+        self._heartbeat_lock = Lock()
+        self._heartbeat_monitor_thread: threading.Thread | None = None
+        self._force_reconnect = False
+        
         # State for history worker
         self._history_queue: Queue = Queue()
         self._history_worker_thread: threading.Thread | None = None
 
     def start(self) -> None:
-        """Starts the event stream worker and history worker."""
+        """Starts the event stream worker, history worker, and heartbeat monitor."""
         # Start history worker (runs always)
         if self._history_worker_thread is None or not self._history_worker_thread.is_alive():
             self._history_worker_thread = threading.Thread(
@@ -63,11 +76,19 @@ class EventStreamManager:
             )
             self._history_worker_thread.start()
         
+        # Start heartbeat monitor (runs always)
+        if self._heartbeat_monitor_thread is None or not self._heartbeat_monitor_thread.is_alive():
+            self._heartbeat_monitor_thread = threading.Thread(
+                target=self._heartbeat_monitor, daemon=True
+            )
+            self._heartbeat_monitor_thread.start()
+        
         # Start event stream worker (runs always for history persistence)
         if self._stream_running:
             return
         
         self._stream_stop_event.clear()
+        self._force_reconnect = False
         self._stream_running = True
         self._stream_thread = threading.Thread(
             target=self._event_stream_worker, daemon=True
@@ -154,11 +175,74 @@ class EventStreamManager:
                 # Timeout or other error - just continue
                 pass
 
+    def _update_heartbeat(self) -> None:
+        """Updates the last heartbeat timestamp."""
+        with self._heartbeat_lock:
+            self._last_heartbeat = time.time()
+
+    def _check_heartbeat(self) -> bool:
+        """Checks if heartbeat is still valid.
+        
+        Returns:
+            True if heartbeat is valid, False if timeout exceeded
+        """
+        with self._heartbeat_lock:
+            if self._last_heartbeat == 0:
+                # No heartbeat received yet, but connection is new
+                return True
+            elapsed = time.time() - self._last_heartbeat
+            return elapsed < self._heartbeat_timeout
+
+    def _heartbeat_monitor(self) -> None:
+        """Background thread that monitors heartbeat and forces reconnect on timeout.
+        
+        Runs ALWAYS to ensure stream stays connected.
+        Sends STREAM_STATUS events to clients every check_interval.
+        """
+        check_interval = 30  # Check every 30 seconds
+        
+        while True:
+            try:
+                time.sleep(check_interval)
+                
+                # Only check if stream is supposed to be running
+                if not self._stream_running:
+                    continue
+                
+                # Send stream status to clients
+                stream_connected = self._check_heartbeat()
+                with self._heartbeat_lock:
+                    last_heartbeat_time = self._last_heartbeat if self._last_heartbeat > 0 else None
+                
+                self.broadcast_event("STREAM_STATUS", {
+                    "stream_connected": stream_connected,
+                    "last_heartbeat": last_heartbeat_time,
+                    "timestamp": time.time()
+                })
+                
+                if not stream_connected and self._last_heartbeat > 0:
+                    # Heartbeat timeout detected - force reconnect
+                    if self.enable_logging:
+                        elapsed = time.time() - self._last_heartbeat
+                        logger.warning(
+                            f"Event stream worker: Heartbeat monitor detected timeout "
+                            f"(no KEEP-ALIVE for {elapsed:.0f}s). Forcing reconnect..."
+                        )
+                    self._force_reconnect = True
+                    # Reset heartbeat to allow new connection
+                    with self._heartbeat_lock:
+                        self._last_heartbeat = 0
+            except Exception as e:
+                if self.enable_logging:
+                    logger.error(f"Heartbeat monitor error: {e}")
+                time.sleep(check_interval)
+
     def _event_stream_worker(self) -> None:
         """Background thread that listens to the HomeConnect events stream.
         
         Runs ALWAYS to collect events for history.
         Only sends events to connected clients (saves resources).
+        Monitors KEEP-ALIVE events to detect stream failures.
         """
         # Backoff variables for rate limiting
         backoff_seconds = 60  # Start with 60 seconds
@@ -231,14 +315,37 @@ class EventStreamManager:
                 if self.enable_logging:
                     logger.info("Event stream worker: Connected, waiting for events...")
 
+                # Reset heartbeat on successful connection
+                self._update_heartbeat()
+
                 sse_client = SSEClient(response)
                 for event in sse_client.events():
+                    # Check if stream should be stopped or reconnect forced
+                    if self._stream_stop_event.is_set():
+                        break
+                    if self._force_reconnect:
+                        if self.enable_logging:
+                            logger.info("Event stream worker: Reconnect forced by heartbeat monitor")
+                        self._force_reconnect = False
+                        break
+
+                    # Handle KEEP-ALIVE events (they have no data)
+                    event_type = event.event or "message"
+                    if event_type == "KEEP-ALIVE":
+                        self._update_heartbeat()
+                        if self.enable_logging:
+                            logger.info("Event stream worker: Received KEEP-ALIVE")
+                        continue
+
+                    # Skip events without data (except KEEP-ALIVE which we handled above)
                     if not event.data:
                         continue
 
                     try:
                         payload = json.loads(event.data)
-                        event_type = event.event or "message"
+                        
+                        # Update heartbeat on any real event (as backup)
+                        self._update_heartbeat()
 
                         # Save all events for history (asynchronously via queue)
                         if self.history_manager:
@@ -300,12 +407,35 @@ class EventStreamManager:
                         if self.enable_logging:
                             logger.error(f"Error processing event: {e}")
 
+                # Check heartbeat after event loop (stream ended)
+                if not self._check_heartbeat():
+                    if self.enable_logging:
+                        logger.warning(
+                            f"Event stream worker: Heartbeat timeout detected "
+                            f"(no KEEP-ALIVE for {self._heartbeat_timeout}s). Reconnecting..."
+                        )
+                    # Break to reconnect
+                    break
+
             except KeyboardInterrupt:
                 break
             except Exception as e:
                 if self.enable_logging:
-                    logger.error(f"Error in event stream: {e}")
+                    logger.error(f"Event stream worker: Error in event stream: {e}")
+                    logger.info("Event stream worker: Reconnecting in 5 seconds...")
                 time.sleep(5)  # Wait before reconnect
+            
+            # Check heartbeat before reconnecting
+            if not self._check_heartbeat() and self._last_heartbeat > 0:
+                if self.enable_logging:
+                    logger.warning(
+                        f"Event stream worker: Heartbeat timeout before reconnect "
+                        f"(no KEEP-ALIVE for {self._heartbeat_timeout}s)"
+                    )
+            
+            # Reset heartbeat for new connection attempt
+            with self._heartbeat_lock:
+                self._last_heartbeat = 0
         
         self._stream_running = False
         if self.enable_logging:

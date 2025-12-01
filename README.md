@@ -251,6 +251,12 @@ For iOS/iPadOS, an HTTP server is the better solution:
    ```
    By default, logging is enabled and shows all requests with timestamp, IP address, method, path, and status code. **Tokens are automatically masked in the log** (shown as `***`).
 
+5. **Test heartbeat timeout (for testing reconnection):** To test the automatic reconnection mechanism with a shorter timeout:
+   ```bash
+   HEARTBEAT_TEST_TIMEOUT=60 make server
+   ```
+   This sets the heartbeat timeout to 60 seconds instead of the default 180 seconds (3 minutes). The server will automatically reconnect if no KEEP-ALIVE events are received within this timeout. **Note:** This is only for testing - use the default timeout in production.
+
 ### Create SSL/TLS Certificate
 
 For HTTPS, you need an SSL certificate:

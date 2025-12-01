@@ -142,7 +142,10 @@ The HomeConnect Coffee project is a Python application for controlling HomeConne
 - Encapsulates SQLite queries
 
 **`EventStreamManager`** - Event Stream Management
-- Encapsulates event stream worker and history worker
+- Encapsulates event stream worker, history worker, and heartbeat monitor
+- Monitors KEEP-ALIVE events from HomeConnect API (sent every ~55 seconds)
+- Automatically reconnects on heartbeat timeout (default: 180 seconds)
+- Configurable timeout via `HEARTBEAT_TEST_TIMEOUT` environment variable for testing
 - Manages connected SSE clients
 - `start()` / `stop()` - Starts/stops worker threads
 - `add_client()` / `remove_client()` - Client management
@@ -182,6 +185,15 @@ The HomeConnect Coffee project is a Python application for controlling HomeConne
 ## Data Flow
 
 ### Event Stream Flow
+
+The event stream runs continuously in the background, independent of browser connections:
+1. **Connection:** `EventStreamManager._event_stream_worker()` connects to HomeConnect API SSE endpoint
+2. **Heartbeat Monitoring:** `EventStreamManager._heartbeat_monitor()` monitors KEEP-ALIVE events (every ~55s)
+3. **Automatic Reconnect:** If no KEEP-ALIVE received within timeout (default: 180s), stream automatically reconnects
+4. **Event Processing:** All events are saved to history via `EventStreamManager._history_worker()`
+5. **Client Broadcasting:** Events are broadcast to connected dashboard clients via `EventStreamManager.broadcast_event()`
+
+### Event Stream Flow (Detailed)
 
 ```
 HomeConnect API

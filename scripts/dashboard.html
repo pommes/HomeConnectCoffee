@@ -57,13 +57,46 @@
             height: 12px;
             border-radius: 50%;
             margin-right: 8px;
-            background: #4caf50;
+            background: #4caf50; /* Green - both connected */
             animation: pulse 2s infinite;
+            cursor: help; /* Indicates tooltip is available */
+            position: relative;
         }
 
         .status-indicator.disconnected {
-            background: #f44336;
+            background: #f44336; /* Red - browser not connected */
             animation: none;
+        }
+
+        .status-indicator.api-disconnected {
+            background: #ff9800; /* Orange - browser OK, but API not */
+            animation: pulse 2s infinite;
+        }
+
+        /* Tooltip */
+        .status-indicator::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            background: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            white-space: pre-line;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            margin-bottom: 5px;
+            z-index: 1000;
+            text-align: left;
+            min-width: 280px;
+            max-width: 350px;
+        }
+
+        .status-indicator:hover::after {
+            opacity: 1;
         }
 
         @keyframes pulse {
@@ -283,6 +316,9 @@
 
         // EventSource for live updates
         let eventSource = null;
+        // State for API connection status
+        let apiStreamConnected = false;
+        let lastApiHeartbeat = null;
         
         // Lazy loading state
         let isLoadingMoreEvents = false;
@@ -293,6 +329,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             initCharts();
             setupInfiniteScroll();
+            // Initial status (will be updated by STREAM_STATUS event)
+            updateConnectionStatus(false, false);
             // Load data - initial data first, then event history
             loadInitialData().then(() => {
                 // Load event history after initial data
@@ -1012,6 +1050,42 @@
             dailyChart.update();
         }
 
+        function updateConnectionStatus(browserConnected, apiConnected) {
+            const statusIndicator = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('connectionText');
+            
+            // Remove all status classes
+            statusIndicator.classList.remove('disconnected', 'api-disconnected');
+            
+            if (!browserConnected) {
+                // Red: Browser not connected
+                statusIndicator.classList.add('disconnected');
+                statusText.textContent = 'Connection lost';
+                statusIndicator.setAttribute('data-tooltip', 
+                    'Browser ↔ Server: Disconnected\n' +
+                    'Server ↔ API: Unknown\n\n' +
+                    'The browser cannot connect to the server. Check your network connection.'
+                );
+            } else if (!apiConnected) {
+                // Orange: Browser OK, but API not
+                statusIndicator.classList.add('api-disconnected');
+                statusText.textContent = 'Connected (API offline)';
+                statusIndicator.setAttribute('data-tooltip',
+                    'Browser ↔ Server: Connected ✓\n' +
+                    'Server ↔ API: Disconnected ✗\n\n' +
+                    'The server is running but cannot connect to HomeConnect API. Events may not be received.'
+                );
+            } else {
+                // Green: Both connected
+                statusText.textContent = 'Connected';
+                statusIndicator.setAttribute('data-tooltip',
+                    'Browser ↔ Server: Connected ✓\n' +
+                    'Server ↔ API: Connected ✓\n\n' +
+                    'All connections are active. Events are being received.'
+                );
+            }
+        }
+
         function connectEventStream() {
             const eventsUrl = API_TOKEN
                 ? `${API_BASE}/events?token=${encodeURIComponent(API_TOKEN)}`
@@ -1020,13 +1094,13 @@
             eventSource = new EventSource(eventsUrl);
 
             eventSource.onopen = () => {
-                document.getElementById('connectionStatus').classList.remove('disconnected');
-                document.getElementById('connectionText').textContent = 'Connected';
+                // Browser connection established - update status with current API state
+                updateConnectionStatus(true, apiStreamConnected);
             };
 
             eventSource.onerror = () => {
-                document.getElementById('connectionStatus').classList.add('disconnected');
-                document.getElementById('connectionText').textContent = 'Connection lost';
+                // Browser connection lost - update status
+                updateConnectionStatus(false, false);
                 
                 // Reconnect after 3 seconds
                 setTimeout(() => {
@@ -1101,6 +1175,20 @@
                     }
                 } catch (e) {
                     console.error('Error parsing NOTIFY event:', e);
+                }
+            });
+
+            eventSource.addEventListener('STREAM_STATUS', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    apiStreamConnected = data.stream_connected || false;
+                    lastApiHeartbeat = data.last_heartbeat || null;
+                    
+                    // Update status based on browser connection (from onopen/onerror)
+                    const browserConnected = !document.getElementById('connectionStatus').classList.contains('disconnected');
+                    updateConnectionStatus(browserConnected, apiStreamConnected);
+                } catch (e) {
+                    console.error('Error parsing STREAM_STATUS:', e);
                 }
             });
 
