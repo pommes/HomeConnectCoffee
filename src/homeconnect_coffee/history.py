@@ -234,7 +234,7 @@ class HistoryManager:
         return self.get_history("status_changed", limit)
 
     def get_daily_usage(self, days: int = 7) -> Dict[str, int]:
-        """Returns the daily usage of the last N days."""
+        """Returns the daily usage of the last N days (only brew programs, excluding cleaning programs)."""
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
             try:
@@ -271,12 +271,19 @@ class HistoryManager:
                 for row in rows:
                     timestamp_str, data_json = row
                     try:
+                        data = json.loads(data_json)
+                        program_key = data.get("program", "Unknown")
+                        
+                        # Only count brew programs
+                        if not self._is_brew_program(program_key):
+                            continue
+                        
                         event_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                         date_key = event_time.strftime("%Y-%m-%d")
                         
                         if date_key in date_keys_in_range:
                             daily_counts[date_key] = daily_counts.get(date_key, 0) + 1
-                    except (KeyError, ValueError):
+                    except (KeyError, ValueError, json.JSONDecodeError):
                         continue
                 
                 # Fill missing days with 0
@@ -288,8 +295,40 @@ class HistoryManager:
             finally:
                 conn.close()
 
+    @staticmethod
+    def _is_brew_program(program_key: str) -> bool:
+        """Checks if a program is a brew program (not a cleaning program).
+        
+        Args:
+            program_key: The program key to check
+            
+        Returns:
+            True if the program is a brew program, False otherwise
+        """
+        if not program_key:
+            return False
+        
+        program_key_lower = program_key.lower()
+        
+        # Exclude cleaning programs
+        if "cleaningmodes" in program_key_lower:
+            return False
+        
+        # Include beverage programs (typical brew programs)
+        if "beverage" in program_key_lower:
+            return True
+        
+        # Exclude common cleaning-related keywords
+        cleaning_keywords = ["rinsing", "descaling", "cleaning"]
+        if any(keyword in program_key_lower for keyword in cleaning_keywords):
+            return False
+        
+        # If it's not clearly a cleaning program, assume it's a brew program
+        # This handles edge cases where program keys might not follow standard patterns
+        return True
+
     def get_program_counts(self) -> Dict[str, int]:
-        """Returns the usage count per program."""
+        """Returns the usage count per program (only brew programs, excluding cleaning programs)."""
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
             try:
@@ -310,7 +349,10 @@ class HistoryManager:
                     try:
                         data = json.loads(data_json)
                         program_key = data.get("program", "Unknown")
-                        counts[program_key] = counts.get(program_key, 0) + 1
+                        
+                        # Only count brew programs
+                        if self._is_brew_program(program_key):
+                            counts[program_key] = counts.get(program_key, 0) + 1
                     except (json.JSONDecodeError, KeyError):
                         continue
                 
