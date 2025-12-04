@@ -52,6 +52,7 @@ jobs:
         cat release_notes.md
 
     - name: Create Release
+      id: create_release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ steps.tag_version.outputs.version }}
@@ -61,4 +62,7 @@ jobs:
         prerelease: ${{ contains(steps.tag_version.outputs.version, '-') }}
         generate_release_notes: false
         make_latest: true
+        files: |
+          scripts/install.sh
+
 

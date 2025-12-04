@@ -56,6 +56,19 @@ HOME_CONNECT_CLIENT_SECRET=your-client-secret-here
 HOME_CONNECT_REDIRECT_URI=http://localhost:3000/callback
 HOME_CONNECT_HAID=
 HOME_CONNECT_SCOPE=IdentifyAppliance Control CoffeeMaker Settings Monitor
+
+# Server Configuration (optional, for install.sh and systemd service)
+# Systemd user for the service (default: current user)
+COFFEE_SERVER_USER=
+
+# Server host address (default: 0.0.0.0)
+COFFEE_SERVER_HOST=0.0.0.0
+
+# Server port (default: 8080)
+COFFEE_SERVER_PORT=8080
+
+# API token for authentication (optional, can also be passed via --api-token)
+COFFEE_API_TOKEN=
 ```
 
 **Important:**
@@ -63,6 +76,7 @@ HOME_CONNECT_SCOPE=IdentifyAppliance Control CoffeeMaker Settings Monitor
 - Leave the **HAID** (Home Appliance ID) empty initially – you can find this after the first Auth flow (see next step)
 - The **Redirect URI** must exactly match the one in the application registration
 - **Scopes** are requested during the Auth flow (not during application registration). The scopes specified here are used in the authorization URL.
+- **Server Configuration** variables are optional and only needed when installing on a server (e.g., Raspberry Pi) using `install.sh`. They can also be overridden via command-line arguments.
 
 ### 4. Find HAID (after first Auth flow)
 
@@ -72,6 +86,103 @@ You can find the HAID after successful authentication:
 2. After that, you can display all registered devices with `make status` or `python -m scripts.device_status`
 3. The HAID is in the JSON output under `data.homeappliances[].haid`
 4. Enter this HAID in your `.env` file
+
+## Installation on Raspberry Pi (or other Linux servers)
+
+For production deployments on a Raspberry Pi or other Linux servers, you can use the automated installation script.
+
+### Quick Installation
+
+1. **Download and run the bootstrap script:**
+   ```bash
+   curl -L https://raw.githubusercontent.com/pommes/HomeConnectCoffee/main/install-bootstrap.sh | sh -s v1.2.1
+   ```
+   Replace `v1.2.1` with the desired release version.
+
+2. **Or download install.sh directly from a release:**
+   ```bash
+   curl -L -o install.sh https://github.com/pommes/HomeConnectCoffee/releases/download/v1.2.1/install.sh
+   chmod +x install.sh
+   ./install.sh v1.2.1
+   ```
+
+### Installation Options
+
+The `install.sh` script supports several options:
+
+```bash
+./install.sh <release-tag> [options]
+```
+
+**Options:**
+- `--skip-deps` - Skip installation of system dependencies (python3-venv, python3-pip, tar, curl)
+- `--skip-restart` - Don't restart the systemd service after installation
+- `--user USER` - Systemd user for the service (default: current user, or from `.env`)
+- `--host HOST` - Server host address (default: 0.0.0.0, or from `.env`)
+- `--port PORT` - Server port (default: 8080, or from `.env`)
+- `--api-token TOKEN` - API token for authentication (or from `.env`)
+
+**Configuration Priority:** Command-line arguments → `.env` file → Default values
+
+### Directory Structure
+
+The installer creates the following structure on your server:
+
+```
+/opt/homeconnect_coffee/
+├── current -> v1.2.1          # Symlink to current version
+├── v1.2.1/                    # Version-specific directory
+│   ├── .venv/                 # Python virtual environment
+│   ├── scripts/               # Application scripts
+│   ├── src/                   # Source code
+│   ├── tokens.json -> ../tokens.json  # Symlink to shared tokens
+│   ├── .env -> ../.env        # Symlink to shared config
+│   ├── history.db -> ../history.db    # Symlink to shared database
+│   └── certs -> ../certs      # Symlink to shared certificates
+├── tokens.json                # Shared tokens (persistent)
+├── .env                       # Shared configuration (persistent)
+├── history.db                 # Shared database (persistent)
+└── certs/                     # Shared certificates (persistent)
+```
+
+### Benefits of this Structure
+
+- **Multiple versions**: Install new versions without removing old ones
+- **Quick rollback**: Switch to a previous version by updating the `current` symlink
+- **Persistent data**: Configuration, tokens, and database are preserved across updates
+- **Systemd integration**: Automatic service management with restart on failure
+
+### Rollback to Previous Version
+
+If a new version has issues, you can quickly rollback:
+
+```bash
+cd /opt/homeconnect_coffee
+rm current
+ln -s v1.2.0 current  # Replace with your previous version
+sudo systemctl restart homeconnect_coffee
+```
+
+### Service Management
+
+The installer creates a systemd service `homeconnect_coffee`:
+
+```bash
+# Check status
+sudo systemctl status homeconnect_coffee
+
+# View logs
+sudo journalctl -u homeconnect_coffee -f
+
+# Or check log file
+tail -f /var/log/homeconnect_coffee.log
+
+# Restart service
+sudo systemctl restart homeconnect_coffee
+
+# Stop service
+sudo systemctl stop homeconnect_coffee
+```
 
 ## Start Authorization
 
