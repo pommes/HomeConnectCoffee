@@ -584,6 +584,42 @@ make release-dev  # Creates 1.2.1-dev (rarely needed)
 
 HomeConnect currently does not allow direct offline access on the home network. All commands run through the Bosch Cloud. Protect your client secret files and tokens accordingly.
 
+## Troubleshooting
+
+### Common Errors
+
+#### Error 401: Unauthorized - Invalid or missing API token
+
+**Symptom:**
+```
+2025-12-05 08:51:50 - homeconnect_coffee.errors - WARNING - Error 401 (401): Unauthorized - Invalid or missing API token
+```
+
+**Cause:**
+This error occurs when the API token sent by the client (e.g., browser, Siri Shortcut) does not match the token configured on the server.
+
+**Solutions:**
+
+1. **Check server configuration:**
+   - Verify the API token set when starting the server:
+     ```bash
+     make server SERVER_ARGS="--api-token your-token-here"
+     ```
+   - Or check the `.env` file for `COFFEE_API_TOKEN=your-token-here`
+
+2. **Check client configuration:**
+   - Ensure the token in your Siri Shortcut or browser request matches the server token
+   - For URL parameters: `?token=your-token-here`
+   - For headers: `Authorization: Bearer your-token-here`
+
+3. **Verify token consistency:**
+   - If using multiple clients, ensure they all use the same token
+   - If the server was restarted with a different token, update all clients accordingly
+
+4. **Check for typos:**
+   - API tokens are case-sensitive - verify there are no extra spaces or typos
+   - Copy-paste the token directly to avoid manual typing errors
+
 ## Resources
 
 - [API Documentation](https://developer.home-connect.com/docs)
