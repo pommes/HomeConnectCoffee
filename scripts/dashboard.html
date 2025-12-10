@@ -278,6 +278,22 @@
         </div>
 
         <div class="grid">
+            <div class="card">
+                <h2>API Calls</h2>
+                <div id="apiCallsStats">
+                    <div class="loading">Loading API statistics...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Token Refreshes</h2>
+                <div id="tokenRefreshStats">
+                    <div class="loading">Loading API statistics...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid">
             <div class="card full-width">
                 <h2>Program Usage</h2>
                 <div class="chart-container">
@@ -401,6 +417,46 @@
         }
 
         async function loadInitialData() {
+            // Load API stats first (independent of status)
+            try {
+                const statsUrl = API_TOKEN 
+                    ? `${API_BASE}/api/stats?token=${encodeURIComponent(API_TOKEN)}`
+                    : `${API_BASE}/api/stats`;
+                const statsResponse = await fetch(statsUrl);
+                if (statsResponse.ok) {
+                    const statsData = await statsResponse.json();
+                    updateApiStats(statsData);
+                } else {
+                    console.error('Error loading API stats:', statsResponse.status, statsResponse.statusText);
+                    const apiStatsDiv = document.getElementById('apiStats');
+                    if (apiStatsDiv) {
+                        apiStatsDiv.innerHTML = `
+                            <div class="status-item">
+                                <span class="status-value" style="color: #666;">Error loading API statistics</span>
+                            </div>
+                        `;
+                    }
+                }
+                } catch (statsError) {
+                    console.error('Error loading API stats:', statsError);
+                    const apiCallsDiv = document.getElementById('apiCallsStats');
+                    const tokenRefreshDiv = document.getElementById('tokenRefreshStats');
+                    if (apiCallsDiv) {
+                        apiCallsDiv.innerHTML = `
+                            <div class="status-item">
+                                <span class="status-value" style="color: #666;">Error loading</span>
+                            </div>
+                        `;
+                    }
+                    if (tokenRefreshDiv) {
+                        tokenRefreshDiv.innerHTML = `
+                            <div class="status-item">
+                                <span class="status-value" style="color: #666;">Error loading</span>
+                            </div>
+                        `;
+                    }
+                }
+
             try {
                 // Load status
                 const statusUrl = API_TOKEN 
@@ -410,16 +466,30 @@
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     updateLiveStatus(statusData);
+                    // Update API stats from status response if available (may be more up-to-date)
+                    if (statusData.api_stats) {
+                        updateApiStats(statusData.api_stats);
+                    }
                 } else {
                     // Handle different error cases
                     const liveStatusDiv = document.getElementById('liveStatus');
                     if (liveStatusDiv && liveStatusDiv.querySelector('.loading')) {
-                        if (statusResponse.status === 503) {
-                            // Service Unavailable - device is offline
+                        if (statusResponse.status === 503 || statusResponse.status === 409) {
+                            // Service Unavailable (503) or Conflict (409) - device might be temporarily unavailable
+                            // Try to get error details
+                            let errorMessage = "Device temporarily unavailable";
+                            try {
+                                const errorData = await statusResponse.json();
+                                if (errorData.error && errorData.error.toLowerCase().includes("offline")) {
+                                    errorMessage = "Device offline";
+                                }
+                            } catch (e) {
+                                // Ignore JSON parse errors
+                            }
                             liveStatusDiv.innerHTML = `
                                 <div class="status-item">
                                     <span class="status-label">Status:</span>
-                                    <span class="status-value" style="color: #ff9800;">Device offline</span>
+                                    <span class="status-value" style="color: #ff9800;">${errorMessage}</span>
                                 </div>
                                 <div class="status-item">
                                     <span class="status-label">Operation State:</span>
@@ -594,6 +664,126 @@
                     <div class="status-item">
                         <span class="status-label">Program:</span>
                         <span class="status-value">No active program</span>
+                    </div>
+                `;
+            }
+
+            // Update API statistics if available (already handled in loadInitialData)
+            // But also update here in case updateLiveStatus is called from elsewhere
+            if (data.api_stats) {
+                updateApiStats(data.api_stats);
+            }
+        }
+
+        function updateApiStats(apiStats) {
+            const apiCallsDiv = document.getElementById('apiCallsStats');
+            const tokenRefreshDiv = document.getElementById('tokenRefreshStats');
+            
+            if (!apiStats || Object.keys(apiStats).length === 0) {
+                if (apiCallsDiv) {
+                    apiCallsDiv.innerHTML = `
+                        <div class="status-item">
+                            <span class="status-value" style="color: #666;">Not available</span>
+                        </div>
+                    `;
+                }
+                if (tokenRefreshDiv) {
+                    tokenRefreshDiv.innerHTML = `
+                        <div class="status-item">
+                            <span class="status-value" style="color: #666;">Not available</span>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            const callsToday = apiStats.calls_today || 0;
+            const callsLimit = apiStats.limit || 1000;
+            const callsRemaining = apiStats.remaining || 0;
+            const callsPercentage = apiStats.percentage || 0;
+            const refreshesToday = apiStats.token_refreshes_today || 0;
+            const refreshesLimit = apiStats.token_refresh_limit || 100;
+            const refreshesRemaining = apiStats.token_refresh_remaining || 100;
+            const refreshesPercentage = apiStats.token_refresh_percentage || 0;
+
+            // Determine warning color based on usage
+            let callsColor = '#4caf50'; // Green
+            if (callsPercentage >= 95) {
+                callsColor = '#f44336'; // Red
+            } else if (callsPercentage >= 80) {
+                callsColor = '#ff9800'; // Orange
+            }
+
+            let refreshesColor = '#4caf50'; // Green
+            if (refreshesPercentage >= 50) {
+                refreshesColor = '#ff9800'; // Orange
+            }
+
+            // Calculate background colors for progress bars
+            let callsBackground = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
+            if (callsColor === '#f44336') {
+                callsBackground = '#f44336';
+            } else if (callsColor === '#ff9800') {
+                callsBackground = '#ff9800';
+            }
+
+            let refreshesBackground = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
+            if (refreshesColor === '#ff9800') {
+                refreshesBackground = '#ff9800';
+            }
+
+            // Update API Calls card
+            if (apiCallsDiv) {
+                apiCallsDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-label">Today:</span>
+                        <span class="status-value" style="color: ${callsColor};">
+                            ${callsToday}/${callsLimit} (${callsPercentage}%)
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Remaining:</span>
+                        <span class="status-value" style="color: ${callsColor};">
+                            ${callsRemaining}
+                        </span>
+                    </div>
+                    <div class="progress-container" style="margin-top: 12px;">
+                        <div class="progress-label">
+                            <span>Usage</span>
+                            <span>${callsPercentage}%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${callsPercentage}%; background: ${callsBackground};"></div>
+                            <div class="progress-text">${callsPercentage}%</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Update Token Refreshes card
+            if (tokenRefreshDiv) {
+                tokenRefreshDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-label">Today:</span>
+                        <span class="status-value" style="color: ${refreshesColor};">
+                            ${refreshesToday}/${refreshesLimit} (${refreshesPercentage}%)
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Remaining:</span>
+                        <span class="status-value" style="color: ${refreshesColor};">
+                            ${refreshesRemaining}
+                        </span>
+                    </div>
+                    <div class="progress-container" style="margin-top: 12px;">
+                        <div class="progress-label">
+                            <span>Usage</span>
+                            <span>${refreshesPercentage}%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${refreshesPercentage}%; background: ${refreshesBackground};"></div>
+                            <div class="progress-text">${refreshesPercentage}%</div>
+                        </div>
                     </div>
                 `;
             }

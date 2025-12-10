@@ -287,17 +287,19 @@ class EventStreamManager:
         while not self._stream_stop_event.is_set():
             try:
                 # Timeout for config and client creation
+                # Always get a fresh token for each connection attempt to ensure it's valid
                 try:
                     if self.enable_logging:
                         logger.info("Event stream worker: Loading config and getting access token...")
                     config = load_config()
                     client = HomeConnectClient(config)
+                    # get_access_token() ensures token is valid and refreshes if needed
                     token = client.get_access_token()
                     if self.enable_logging:
                         logger.info("Event stream worker: Successfully obtained access token")
                 except Exception as e:
                     if self.enable_logging:
-                        logger.error(f"Event stream worker: Error loading config: {e}")
+                        logger.error(f"Event stream worker: Error loading config or token: {e}")
                     time.sleep(10)  # Wait before retry
                     continue
                     
@@ -337,6 +339,12 @@ class EventStreamManager:
                         
                         # Exponential backoff: double wait time, but max 5 minutes
                         backoff_seconds = min(backoff_seconds * 2, max_backoff_seconds)
+                        continue
+                    elif e.response is not None and e.response.status_code == 401:
+                        # Token expired or invalid - will get fresh token on next iteration
+                        if self.enable_logging:
+                            logger.warning("Event stream worker: Token expired or invalid (401), will refresh on reconnect")
+                        time.sleep(5)  # Short wait before reconnect with fresh token
                         continue
                     else:
                         # Other HTTP errors

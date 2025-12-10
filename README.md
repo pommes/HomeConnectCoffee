@@ -620,6 +620,58 @@ This error occurs when the API token sent by the client (e.g., browser, Siri Sho
    - API tokens are case-sensitive - verify there are no extra spaces or typos
    - Copy-paste the token directly to avoid manual typing errors
 
+#### Error 429: Rate limit reached
+
+**Symptom:**
+```
+2025-12-08 11:40:26 - homeconnect_coffee.services.event_stream_manager - WARNING - Event stream worker: Rate limit reached (429). Waiting 60s before retry...
+```
+
+**Cause:**
+The HomeConnect API has a daily limit of **1000 API calls per 24 hours**. Once this limit is reached, the API will return 429 (Too Many Requests) errors and block all requests for the remaining 24-hour period.
+
+**Solutions:**
+
+1. **Monitor API usage:**
+   - Check API statistics via `/api/stats` endpoint
+   - View statistics on server startup (printed in console)
+   - Statistics are stored in `api_stats.json` in the project root
+
+2. **Reduce API calls:**
+   - Avoid frequent status polling - use the event stream (`/events`) instead
+   - The dashboard uses the event stream for live updates, which is more efficient
+   - Don't refresh the dashboard too frequently
+
+3. **Wait for reset:**
+   - The limit resets every 24 hours (at midnight UTC)
+   - Statistics automatically reset when a new day starts
+   - You can check the reset time in the API statistics
+
+4. **Prevent future issues:**
+   - The server includes automatic rate limit handling with exponential backoff
+   - Token refresh operations are throttled to prevent excessive API calls
+   - Monitor your usage regularly to avoid hitting the limit
+
+**Note:** Token refresh operations also count towards the API limit. The server includes optimizations to minimize unnecessary token refreshes.
+
+#### Token Refresh Strategy
+
+The application uses a **reactive token refresh strategy**:
+
+- **When tokens are refreshed**: Only when the access token has expired (not proactively)
+- **Why reactive**: The refresh token can be used even if the access token has expired, so there's no need to refresh proactively
+- **Thread safety**: Token refreshes are protected by a lock to prevent concurrent refreshes
+- **Automatic retry**: If a request receives a 401 Unauthorized error, the token is automatically refreshed and the request is retried once
+- **Rate limits**: 
+  - API calls: 1000 per day
+  - Token refreshes: 100 per day (separate limit)
+- **Monitoring**: Token refreshes are tracked separately and displayed in the dashboard API statistics
+
+**Key points:**
+- Tokens are only refreshed when needed (when expired), minimizing API calls
+- The refresh token remains valid for a long time (typically months), so even if the server is idle for hours or days, the token can still be refreshed when needed
+- The application monitors token refresh frequency to help identify potential issues
+
 ## Resources
 
 - [API Documentation](https://developer.home-connect.com/docs)

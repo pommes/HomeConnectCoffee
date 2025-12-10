@@ -86,6 +86,7 @@ class ErrorCode(IntEnum):
     BAD_REQUEST = 400
     UNAUTHORIZED = 401
     NOT_FOUND = 404
+    CONFLICT = 409
     SERVICE_UNAVAILABLE = 503
     INTERNAL_SERVER_ERROR = 500
     GATEWAY_TIMEOUT = 504
@@ -271,6 +272,56 @@ class ErrorHandler:
         
         # RuntimeError from client.py - check if it's a connection-related error
         if exception_type == "RuntimeError" and "API request failed" in exception_message:
+            import re
+            status_match = re.search(r'\((\d{3})\)', exception_message)
+            if status_match:
+                status_code = int(status_match.group(1))
+                # Handle specific status codes first
+                if status_code == 401:
+                    # 401 is an authentication error, not device offline
+                    return (
+                        ErrorCode.UNAUTHORIZED,
+                        "Unauthorized - Invalid or expired access token",
+                        ErrorCode.API_ERROR,
+                    )
+                elif status_code == 409:
+                    # 409 Conflict - check if it's actually device offline
+                    # Extract error detail from message (format: "Error 409 (1002): Conflict: {...}")
+                    error_detail = ""
+                    if ":" in exception_message:
+                        parts = exception_message.split(":", 1)
+                        if len(parts) > 1:
+                            error_detail = parts[1].strip()
+                    
+                    # Try to parse as JSON/dict if it looks like one
+                    import json
+                    error_text_to_check = error_detail
+                    try:
+                        # Try to parse as JSON if it starts with { or [
+                        if error_detail.startswith("{") or error_detail.startswith("["):
+                            parsed = json.loads(error_detail)
+                            if isinstance(parsed, dict):
+                                error_text_to_check = parsed.get("description", parsed.get("error", str(parsed)))
+                            else:
+                                error_text_to_check = str(parsed)
+                    except Exception:
+                        pass
+                    
+                    error_lower = str(error_text_to_check).lower()
+                    # If the error message indicates offline, treat as device offline (503)
+                    if "offline" in error_lower or ("connection" in error_lower and "failed" in error_lower) or "unreachable" in error_lower:
+                        return (
+                            ErrorCode.SERVICE_UNAVAILABLE,
+                            "Device is offline or unreachable",
+                            ErrorCode.API_ERROR,
+                        )
+                    # Otherwise, treat as conflict (device busy or wrong state)
+                    return (
+                        ErrorCode.CONFLICT,
+                        f"Conflict: {error_text_to_check}" if error_text_to_check else "Device is busy or in wrong state",
+                        ErrorCode.API_ERROR,
+                    )
+            
             # Check if the error message indicates connection issues
             error_lower = exception_message.lower()
             if any(keyword in error_lower for keyword in [
@@ -283,14 +334,13 @@ class ErrorHandler:
                     ErrorCode.API_ERROR,
                 )
             # Check for HTTP 500/503/502/504 which might indicate device offline
-            import re
-            status_match = re.search(r'\((\d{3})\)', exception_message)
             if status_match:
                 status_code = int(status_match.group(1))
                 if status_code in [500, 502, 503, 504]:
                     # These status codes might indicate device offline
                     # But we can't be 100% sure, so we check the error detail
-                    if any(keyword in error_lower for keyword in [
+                    # Check for error code 1002 which is specifically "Device is offline or unreachable"
+                    if "1002" in exception_message or any(keyword in error_lower for keyword in [
                         "timeout", "connection", "unreachable", "offline"
                     ]):
                         return (
@@ -314,6 +364,34 @@ class ErrorHandler:
                     return (
                         ErrorCode.NOT_FOUND,
                         "Resource not found",
+                        ErrorCode.API_ERROR,
+                    )
+                elif status_code == 409:
+                    # 409 Conflict - check if it's actually device offline
+                    error_text = ""
+                    try:
+                        if hasattr(response, 'text'):
+                            error_text = response.text
+                            try:
+                                error_json = response.json()
+                                if isinstance(error_json, dict):
+                                    error_text = error_json.get("error", error_json.get("description", error_text))
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    # If the error message indicates offline, treat as device offline (503)
+                    error_lower = error_text.lower() if isinstance(error_text, str) else str(error_text).lower()
+                    if "offline" in error_lower or "connection" in error_lower or "unreachable" in error_lower:
+                        return (
+                            ErrorCode.SERVICE_UNAVAILABLE,
+                            "Device is offline or unreachable",
+                            ErrorCode.API_ERROR,
+                        )
+                    # Otherwise, treat as conflict (device busy or wrong state)
+                    return (
+                        ErrorCode.CONFLICT,
+                        f"Conflict: {error_text}" if error_text else "Device is busy or in wrong state",
                         ErrorCode.API_ERROR,
                     )
                 elif status_code == 429:

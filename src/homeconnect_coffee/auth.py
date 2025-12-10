@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
-import json
 
 import requests
 
 from .config import HomeConnectConfig
+
+logger = logging.getLogger(__name__)
 
 AUTH_BASE = "https://api.home-connect.com/security/oauth"
 TOKEN_ENDPOINT = f"{AUTH_BASE}/token"
@@ -104,8 +107,20 @@ def exchange_code_for_tokens(config: HomeConnectConfig, code: str) -> TokenBundl
 
 
 def refresh_access_token(config: HomeConnectConfig, refresh_token: str) -> TokenBundle:
+    """Refreshes an access token using a refresh token.
+    
+    This function requests a new access token from the HomeConnect API
+    using the provided refresh token. The refresh token can be used even
+    if the access token has expired, as long as the refresh token itself
+    is still valid.
+    """
+    logger.debug("Requesting new access token via refresh_token")
     data = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
     }
-    return _token_request(config, data)
+    token_bundle = _token_request(config, data)
+    # Calculate expires_in for logging
+    expires_in = int((token_bundle.expires_at - datetime.now(timezone.utc)).total_seconds())
+    logger.info(f"Token refresh successful, new token expires in {expires_in} seconds ({expires_in // 3600}h {expires_in % 3600 // 60}m)")
+    return token_bundle

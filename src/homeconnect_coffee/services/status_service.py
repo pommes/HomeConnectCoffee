@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict
 
+from ..api_monitor import get_monitor
+from ..auth import TokenBundle
 from ..client import HomeConnectClient
 
 
@@ -22,21 +25,68 @@ class StatusService:
         """
         return self.client.get_status()
 
+    def _get_token_status(self) -> Dict[str, Any]:
+        """Returns token status information for debugging.
+        
+        Returns:
+            Dict with token status:
+            - valid: Whether token is valid (not expired)
+            - expires_at: Token expiration timestamp (ISO format)
+            - expires_in_seconds: Seconds until token expires (negative if expired)
+            - has_refresh_token: Whether refresh token is available
+        """
+        try:
+            tokens = TokenBundle.from_file(self.client.config.token_path)
+            if not tokens:
+                return {
+                    "valid": False,
+                    "error": "No token found",
+                }
+            
+            now = datetime.now(timezone.utc)
+            expires_in_seconds = (tokens.expires_at - now).total_seconds()
+            
+            return {
+                "valid": not tokens.is_expired(),
+                "expires_at": tokens.expires_at.isoformat(),
+                "expires_in_seconds": int(expires_in_seconds),
+                "has_refresh_token": bool(tokens.refresh_token),
+            }
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": str(e),
+            }
+
     def get_extended_status(self) -> Dict[str, Any]:
-        """Returns extended status with settings and programs.
+        """Returns extended status with settings, programs, and token status.
         
         Returns:
             Dict with:
-            - status: Device status
-            - settings: Device settings
+            - status: Device status (may be empty dict if unavailable)
+            - settings: Device settings (may be empty dict if unavailable)
             - programs: {
                 - available: Available programs
                 - selected: Selected program
                 - active: Active program
               }
+            - token: Token status information (for debugging)
         """
-        status = self.client.get_status()
-        settings = self.client.get_settings()
+        # Try to get status and settings - may fail if device is temporarily unavailable
+        status = {}
+        settings = {}
+        
+        try:
+            status = self.client.get_status()
+        except Exception:
+            # Status unavailable - continue with other information
+            pass
+        
+        try:
+            settings = self.client.get_settings()
+        except Exception:
+            # Settings unavailable - continue with other information
+            pass
         
         # Try to retrieve programs (may fail if device is not ready)
         programs_available = {}
@@ -58,6 +108,16 @@ class StatusService:
         except Exception:
             pass
 
+        # Get token status for debugging
+        token_status = self._get_token_status()
+
+        # Get API statistics
+        try:
+            api_stats = get_monitor().get_stats()
+        except Exception:
+            # If monitoring fails, continue without stats
+            api_stats = {}
+
         return {
             "status": status,
             "settings": settings,
@@ -66,5 +126,7 @@ class StatusService:
                 "selected": program_selected,
                 "active": program_active,
             },
+            "token": token_status,
+            "api_stats": api_stats,
         }
 

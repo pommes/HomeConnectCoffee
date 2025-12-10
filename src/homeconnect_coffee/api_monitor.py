@@ -13,6 +13,8 @@ class APICallMonitor:
     DAILY_LIMIT = 1000  # HomeConnect API limit: 1000 calls/day
     WARNING_THRESHOLD_80 = 800  # Warning at 80%
     WARNING_THRESHOLD_95 = 950  # Warning at 95%
+    TOKEN_REFRESH_LIMIT = 100  # HomeConnect API limit: 100 token refreshes/day
+    TOKEN_REFRESH_WARNING_THRESHOLD = 50  # Warning at 50 refreshes
 
     def __init__(self, stats_path: Path) -> None:
         """Initializes the API call monitor.
@@ -31,6 +33,7 @@ class APICallMonitor:
             self._write_stats({
                 "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "calls_today": 0,
+                "token_refreshes_today": 0,
                 "last_reset": datetime.now(timezone.utc).isoformat(),
             })
 
@@ -42,6 +45,7 @@ class APICallMonitor:
                     return {
                         "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                         "calls_today": 0,
+                        "token_refreshes_today": 0,
                         "last_reset": datetime.now(timezone.utc).isoformat(),
                     }
                 with open(self.stats_path, "r", encoding="utf-8") as f:
@@ -50,6 +54,7 @@ class APICallMonitor:
                 return {
                     "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "calls_today": 0,
+                    "token_refreshes_today": 0,
                     "last_reset": datetime.now(timezone.utc).isoformat(),
                 }
 
@@ -72,6 +77,7 @@ class APICallMonitor:
             stats = {
                 "current_day": today,
                 "calls_today": 0,
+                "token_refreshes_today": 0,
                 "last_reset": datetime.now(timezone.utc).isoformat(),
             }
             self._write_stats(stats)
@@ -105,16 +111,44 @@ class APICallMonitor:
             remaining = self.DAILY_LIMIT - calls_today
             print(f"⚠️  High API call usage: {calls_today}/{self.DAILY_LIMIT} calls today ({remaining} remaining)")
 
+    def record_token_refresh(self) -> None:
+        """Records a token refresh operation.
+        
+        This tracks token refreshes separately from regular API calls,
+        as they have their own rate limit (100 refreshes/day).
+        """
+        stats = self._read_stats()
+        stats = self._reset_if_new_day(stats)
+        
+        stats["token_refreshes_today"] = stats.get("token_refreshes_today", 0) + 1
+        refreshes_today = stats["token_refreshes_today"]
+        
+        self._write_stats(stats)
+        
+        # Output warnings
+        if refreshes_today >= self.TOKEN_REFRESH_LIMIT:
+            print(f"⚠️  Token refresh limit reached! ({refreshes_today}/{self.TOKEN_REFRESH_LIMIT} refreshes today)")
+            print(f"   Further token refreshes will be blocked until the next day.")
+        elif refreshes_today >= self.TOKEN_REFRESH_WARNING_THRESHOLD:
+            remaining = self.TOKEN_REFRESH_LIMIT - refreshes_today
+            print(f"⚠️  High token refresh usage: {refreshes_today}/{self.TOKEN_REFRESH_LIMIT} refreshes today ({remaining} remaining)")
+
     def get_stats(self) -> Dict:
         """Returns the current statistics."""
         stats = self._read_stats()
         stats = self._reset_if_new_day(stats)
+        calls_today = stats.get("calls_today", 0)
+        refreshes_today = stats.get("token_refreshes_today", 0)
         return {
-            "calls_today": stats.get("calls_today", 0),
+            "calls_today": calls_today,
             "limit": self.DAILY_LIMIT,
-            "remaining": self.DAILY_LIMIT - stats.get("calls_today", 0),
-            "percentage": round((stats.get("calls_today", 0) / self.DAILY_LIMIT) * 100, 1),
+            "remaining": self.DAILY_LIMIT - calls_today,
+            "percentage": round((calls_today / self.DAILY_LIMIT) * 100, 1),
             "current_day": stats.get("current_day", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+            "token_refreshes_today": refreshes_today,
+            "token_refresh_limit": self.TOKEN_REFRESH_LIMIT,
+            "token_refresh_remaining": self.TOKEN_REFRESH_LIMIT - refreshes_today,
+            "token_refresh_percentage": round((refreshes_today / self.TOKEN_REFRESH_LIMIT) * 100, 1),
         }
 
     def print_stats(self) -> None:
@@ -123,6 +157,8 @@ class APICallMonitor:
         print(f"📊 API call statistics (today, {stats['current_day']}):")
         print(f"   Used: {stats['calls_today']}/{stats['limit']} calls ({stats['percentage']}%)")
         print(f"   Remaining: {stats['remaining']} calls")
+        print(f"   Token refreshes: {stats['token_refreshes_today']}/{stats['token_refresh_limit']} ({stats['token_refresh_percentage']}%)")
+        print(f"   Token refresh remaining: {stats['token_refresh_remaining']} refreshes")
 
 
 # Global monitor instance
@@ -147,4 +183,13 @@ def record_api_call(endpoint: str, method: str = "GET") -> None:
     except Exception as e:
         # Monitoring errors should not block API calls
         print(f"WARNING: Error in API call monitoring: {e}")
+
+
+def record_token_refresh() -> None:
+    """Records a token refresh (global function)."""
+    try:
+        get_monitor().record_token_refresh()
+    except Exception as e:
+        # Monitoring errors should not block token refreshes
+        print(f"WARNING: Error in token refresh monitoring: {e}")
 
