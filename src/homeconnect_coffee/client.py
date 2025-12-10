@@ -3,6 +3,7 @@ from __future__ import annotations
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, Dict, Optional
@@ -21,6 +22,9 @@ JSON_HEADER = "application/vnd.bsh.sdk.v1+json"
 # Global lock for token refresh (prevents concurrent refreshes)
 _token_refresh_lock = Lock()
 
+# Global lock for rate limit retries (prevents concurrent retries)
+_rate_limit_retry_lock = Lock()
+
 
 class HomeConnectClient:
     def __init__(self, config: HomeConnectConfig) -> None:
@@ -33,6 +37,8 @@ class HomeConnectClient:
         self._session = requests.Session()
         # Track if we've already retried a request (to prevent infinite loops)
         self._retry_attempted = False
+        # Track rate limit retries (reset per request)
+        self._rate_limit_retries = 0
 
     def _ensure_token(self) -> None:
         """Ensures token is valid, refreshing if necessary.
@@ -161,6 +167,35 @@ class HomeConnectClient:
                 self._retry_attempted = False  # Reset on error
                 # If refresh fails, continue with original error handling
                 pass
+        
+        # Handle 429 Rate Limit - implement exponential backoff with retry
+        if resp.status_code == 429:
+            # Use lock to prevent concurrent rate limit retries
+            with _rate_limit_retry_lock:
+                # Calculate exponential backoff: start with 60s, max 300s
+                backoff_seconds = min(60 * (2 ** self._rate_limit_retries), 300)
+                logger.warning(f"Rate limit reached (429) for {method} {endpoint}. "
+                             f"Waiting {backoff_seconds}s before retry (attempt {self._rate_limit_retries + 1}/3)...")
+                time.sleep(backoff_seconds)
+                
+                self._rate_limit_retries += 1
+                if self._rate_limit_retries < 3:
+                    # Retry request with exponential backoff
+                    logger.info(f"Retrying request after rate limit backoff (attempt {self._rate_limit_retries + 1})")
+                    return self._request(method, endpoint, json_payload=json_payload, retry_on_401=retry_on_401)
+                else:
+                    # Max retries reached - reset counter and raise error
+                    self._rate_limit_retries = 0
+                    error_detail = resp.text
+                    try:
+                        error_json = resp.json()
+                        error_detail = error_json.get("error", error_json.get("description", error_detail))
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"Rate limit reached (429) after 3 retries: {error_detail}")
+        
+        # Reset rate limit retries on successful request
+        self._rate_limit_retries = 0
         
         if not resp.ok:
             error_detail = resp.text

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -16,6 +18,10 @@ class StatusService:
     def __init__(self, client: HomeConnectClient) -> None:
         """Initializes the StatusService with a HomeConnectClient."""
         self.client = client
+        # Cache for extended status to reduce API calls
+        self._cache: Dict[str, Any] = {}
+        self._cache_lock = threading.Lock()
+        self._cache_ttl = 10  # Cache for 10 seconds
 
     def get_status(self) -> Dict[str, Any]:
         """Returns the device status.
@@ -58,19 +64,11 @@ class StatusService:
                 "error": str(e),
             }
 
-    def get_extended_status(self) -> Dict[str, Any]:
-        """Returns extended status with settings, programs, and token status.
+    def _fetch_extended_status(self) -> Dict[str, Any]:
+        """Fetches extended status from API (internal method, not cached).
         
         Returns:
-            Dict with:
-            - status: Device status (may be empty dict if unavailable)
-            - settings: Device settings (may be empty dict if unavailable)
-            - programs: {
-                - available: Available programs
-                - selected: Selected program
-                - active: Active program
-              }
-            - token: Token status information (for debugging)
+            Dict with extended status data
         """
         # Try to get status and settings - may fail if device is temporarily unavailable
         status = {}
@@ -129,4 +127,40 @@ class StatusService:
             "token": token_status,
             "api_stats": api_stats,
         }
+
+    def get_extended_status(self) -> Dict[str, Any]:
+        """Returns extended status with settings, programs, and token status.
+        
+        Uses caching to reduce API calls when multiple requests occur within
+        the cache TTL (10 seconds).
+        
+        Returns:
+            Dict with:
+            - status: Device status (may be empty dict if unavailable)
+            - settings: Device settings (may be empty dict if unavailable)
+            - programs: {
+                - available: Available programs
+                - selected: Selected program
+                - active: Active program
+              }
+            - token: Token status information (for debugging)
+            - api_stats: API usage statistics
+        """
+        # Check cache first
+        with self._cache_lock:
+            if self._cache and (time.time() - self._cache.get('timestamp', 0)) < self._cache_ttl:
+                # Cache hit - return cached data
+                return self._cache['data']
+        
+        # Cache miss or expired - fetch new data
+        data = self._fetch_extended_status()
+        
+        # Update cache
+        with self._cache_lock:
+            self._cache = {
+                'data': data,
+                'timestamp': time.time()
+            }
+        
+        return data
 

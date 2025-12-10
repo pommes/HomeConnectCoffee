@@ -87,8 +87,9 @@ class ErrorCode(IntEnum):
     UNAUTHORIZED = 401
     NOT_FOUND = 404
     CONFLICT = 409
-    SERVICE_UNAVAILABLE = 503
+    TOO_MANY_REQUESTS = 429
     INTERNAL_SERVER_ERROR = 500
+    SERVICE_UNAVAILABLE = 503
     GATEWAY_TIMEOUT = 504
     
     # Internal error codes (for logging)
@@ -265,7 +266,7 @@ class ErrorHandler:
         # RuntimeError with 429 information (from client.py on rate limit)
         if exception_type == "RuntimeError" and "(429)" in exception_message:
             return (
-                ErrorCode.GATEWAY_TIMEOUT,
+                ErrorCode.TOO_MANY_REQUESTS,
                 "Rate limit reached. Please try again later.",
                 ErrorCode.API_ERROR,
             )
@@ -396,7 +397,7 @@ class ErrorHandler:
                     )
                 elif status_code == 429:
                     return (
-                        ErrorCode.GATEWAY_TIMEOUT,
+                        ErrorCode.TOO_MANY_REQUESTS,
                         "Rate limit reached. Please try again later.",
                         ErrorCode.API_ERROR,
                     )

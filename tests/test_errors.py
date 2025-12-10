@@ -142,9 +142,9 @@ class TestErrorHandler:
         
         code, response = handler.handle_error(exception)
         
-        assert code == ErrorCode.GATEWAY_TIMEOUT
+        assert code == ErrorCode.TOO_MANY_REQUESTS
         assert "Rate limit" in response["error"]
-        assert response["code"] == ErrorCode.GATEWAY_TIMEOUT
+        assert response["code"] == ErrorCode.TOO_MANY_REQUESTS
         assert response["error_code"] == ErrorCode.API_ERROR
 
     def test_handle_error_generic_exception(self):
