@@ -17,6 +17,8 @@ import threading
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from homeconnect_coffee import __version__, get_version_type, is_release_version
 from homeconnect_coffee.api_monitor import get_monitor
 from homeconnect_coffee.errors import ErrorHandler
@@ -36,16 +38,49 @@ error_handler: ErrorHandler | None = None
 logger = logging.getLogger(__name__)
 
 
-
-
+def load_env_file() -> None:
+    """Load .env file from common locations.
+    
+    Searches for .env file in:
+    1. Project root (parent of scripts directory)
+    2. /opt/homeconnect_coffee/.env (for server installations)
+    3. Current working directory
+    
+    Only sets environment variables that are not already set (command-line args have priority).
+    """
+    env_paths = [
+        # Project root (parent of scripts directory)
+        Path(__file__).parent.parent / ".env",
+        # Server installation location
+        Path("/opt/homeconnect_coffee/.env"),
+        # Current working directory
+        Path.cwd() / ".env",
+    ]
+    
+    for env_path in env_paths:
+        if env_path.exists():
+            # Load .env file, but don't override existing environment variables
+            # This ensures command-line arguments have priority
+            load_dotenv(env_path, override=False)
+            logger.debug(f"Loaded .env file from: {env_path}")
+            break
+    else:
+        logger.debug("No .env file found in common locations")
 
 
 def main() -> None:
     global history_manager, event_stream_manager, error_handler
 
+    # Load .env file first, before parsing arguments
+    # This allows .env to provide defaults, but command-line args will override them
+    load_env_file()
+
     parser = argparse.ArgumentParser(description="HTTP server for Siri Shortcuts integration")
-    parser.add_argument("--port", type=int, default=8080, help="Port for HTTP server (default: 8080)")
-    parser.add_argument("--host", type=str, default="localhost", help="Host (default: localhost)")
+    # Get defaults from environment variables if available
+    default_port = int(os.getenv("COFFEE_SERVER_PORT", "8080"))
+    default_host = os.getenv("COFFEE_SERVER_HOST", "localhost")
+    parser.add_argument("--port", type=int, default=default_port, help=f"Port for HTTP server (default: {default_port}, or set COFFEE_SERVER_PORT in .env)")
+    parser.add_argument("--host", type=str, default=default_host, help=f"Host (default: {default_host}, or set COFFEE_SERVER_HOST in .env)")
     parser.add_argument(
         "--no-log",
         action="store_true",
@@ -64,17 +99,20 @@ def main() -> None:
         default=None,
         help="API token for authentication (or set COFFEE_API_TOKEN in .env)",
     )
+    # Get cert/key defaults from environment if available
+    default_cert = os.getenv("COFFEE_SERVER_CERT")
+    default_key = os.getenv("COFFEE_SERVER_KEY")
     parser.add_argument(
         "--cert",
         type=str,
-        default=None,
-        help="Path to SSL certificate (for HTTPS). Also requires --key.",
+        default=default_cert,
+        help="Path to SSL certificate (for HTTPS). Also requires --key. (or set COFFEE_SERVER_CERT in .env)",
     )
     parser.add_argument(
         "--key",
         type=str,
-        default=None,
-        help="Path to SSL private key (for HTTPS). Also requires --cert.",
+        default=default_key,
+        help="Path to SSL private key (for HTTPS). Also requires --cert. (or set COFFEE_SERVER_KEY in .env)",
     )
     args = parser.parse_args()
 

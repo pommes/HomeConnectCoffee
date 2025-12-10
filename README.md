@@ -57,11 +57,10 @@ HOME_CONNECT_REDIRECT_URI=http://localhost:3000/callback
 HOME_CONNECT_HAID=
 HOME_CONNECT_SCOPE=IdentifyAppliance Control CoffeeMaker Settings Monitor
 
-# Server Configuration (optional, for install.sh and systemd service)
-# Systemd user for the service (default: current user)
-COFFEE_SERVER_USER=
+# Server Configuration (optional, can be set in .env or via command-line arguments)
+# Command-line arguments have priority over .env values
 
-# Server host address (default: 0.0.0.0)
+# Server host address (default: localhost for local dev, 0.0.0.0 for server)
 COFFEE_SERVER_HOST=0.0.0.0
 
 # Server port (default: 8080)
@@ -69,6 +68,22 @@ COFFEE_SERVER_PORT=8080
 
 # API token for authentication (optional, can also be passed via --api-token)
 COFFEE_API_TOKEN=
+
+# SSL certificate paths (optional, for HTTPS)
+# These are relative to the installation directory or absolute paths
+COFFEE_SERVER_CERT=certs/server.crt
+COFFEE_SERVER_KEY=certs/server.key
+
+# Logging level (optional, default: INFO)
+# Options: DEBUG, INFO, WARNING, ERROR
+LOG_LEVEL=INFO
+
+# Log sensitive information (optional, default: false)
+# Set to "true" to include tracebacks in error responses
+LOG_SENSITIVE=false
+
+# Systemd user for the service (only used by install.sh, default: current user)
+COFFEE_SERVER_USER=
 ```
 
 **Important:**
@@ -76,7 +91,19 @@ COFFEE_API_TOKEN=
 - Leave the **HAID** (Home Appliance ID) empty initially – you can find this after the first Auth flow (see next step)
 - The **Redirect URI** must exactly match the one in the application registration
 - **Scopes** are requested during the Auth flow (not during application registration). The scopes specified here are used in the authorization URL.
-- **Server Configuration** variables are optional and only needed when installing on a server (e.g., Raspberry Pi) using `install.sh`. They can also be overridden via command-line arguments.
+
+**Configuration Priority:**
+All server parameters can be configured in `.env` for convenience, but command-line arguments always take precedence when provided.
+
+**Priority order:** Command-line arguments → `.env` file → Default values
+
+**Example:**
+- `.env` contains: `LOG_LEVEL=INFO` and `COFFEE_SERVER_PORT=8080`
+- Command-line: `python server.py --log-level DEBUG --port 9000`
+- Result: `DEBUG` and port `9000` are used (command-line arguments override `.env` values)
+- If no `--port` argument is provided, port `8080` from `.env` is used
+
+**Server Configuration** variables are optional and can be set in `.env` or via command-line arguments. They are especially useful when installing on a server (e.g., Raspberry Pi) using `install.sh`.
 
 ### 4. Find HAID (after first Auth flow)
 
@@ -122,7 +149,12 @@ The `install.sh` script supports several options:
 - `--port PORT` - Server port (default: 8080, or from `.env`)
 - `--api-token TOKEN` - API token for authentication (or from `.env`)
 
-**Configuration Priority:** Command-line arguments → `.env` file → Default values
+**Configuration Priority:**
+- Command-line arguments (highest priority)
+- `.env` file values (used as defaults if no command-line argument provided)
+- Hardcoded defaults (lowest priority)
+
+**Note:** The server automatically loads `.env` files from common locations (project root, `/opt/homeconnect_coffee/.env`, or current directory). All server parameters can be configured in `.env` without modifying the systemd service file.
 
 ### Directory Structure
 
