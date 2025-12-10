@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -89,12 +90,39 @@ class HistoryHandler:
         Args:
             router: The router (BaseHandler instance) with request context
         """
+        global history_manager
+        
         try:
-            # api_stats.json is in project root (2 levels above handlers/)
-            stats_path = Path(__file__).parent.parent.parent.parent / "api_stats.json"
-            monitor = get_monitor(stats_path)
-            stats = monitor.get_stats()
-            router._send_json(stats, status_code=200)
+            # Use global history_manager if available, otherwise create default
+            if history_manager is None:
+                # Fallback: create default HistoryManager
+                history_path = Path(__file__).parent.parent.parent.parent / "history.db"
+                from ..history import HistoryManager
+                history_manager = HistoryManager(history_path)
+            
+            # Get monitor with history_manager (migration from JSON happens automatically)
+            json_stats_path = Path(__file__).parent.parent.parent.parent / "api_stats.json"
+            try:
+                monitor = get_monitor(history_manager=history_manager, json_stats_path=json_stats_path)
+                stats = monitor.get_stats()
+                router._send_json(stats, status_code=200)
+            except Exception as monitor_error:
+                # If monitor initialization fails, return empty stats
+                if router.error_handler:
+                    # Log but don't fail the request
+                    router._send_json({
+                        "calls_today": 0,
+                        "limit": 1000,
+                        "remaining": 1000,
+                        "percentage": 0.0,
+                        "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        "token_refreshes_today": 0,
+                        "token_refresh_limit": 100,
+                        "token_refresh_remaining": 100,
+                        "token_refresh_percentage": 0.0,
+                    }, status_code=200)
+                else:
+                    router._send_error(500, f"Error loading API statistics: {monitor_error}")
         except Exception as e:
             if router.error_handler:
                 code, response = router.error_handler.handle_error(e, default_message="Error loading API statistics")

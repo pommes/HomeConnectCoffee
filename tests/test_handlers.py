@@ -340,14 +340,18 @@ class TestHistoryHandler:
         router.send_header = Mock()
         router.end_headers = Mock()
         
-        with patch("homeconnect_coffee.handlers.history_handler.get_monitor") as mock_monitor:
-            mock_monitor_instance = Mock()
-            mock_monitor_instance.get_stats.return_value = {"calls": 0}
-            mock_monitor.return_value = mock_monitor_instance
-            
-            HistoryHandler.handle_api_stats(router)
-            
-            mock_monitor_instance.get_stats.assert_called_once()
+        # Mock history_manager
+        mock_history_manager = Mock()
+        with patch("homeconnect_coffee.handlers.history_handler.history_manager", mock_history_manager):
+            with patch("homeconnect_coffee.handlers.history_handler.get_monitor") as mock_monitor:
+                mock_monitor_instance = Mock()
+                mock_monitor_instance.get_stats.return_value = {"calls": 0}
+                mock_monitor.return_value = mock_monitor_instance
+                
+                HistoryHandler.handle_api_stats(router)
+                
+                mock_monitor.assert_called_once()
+                mock_monitor_instance.get_stats.assert_called_once()
 
 
 @pytest.mark.unit

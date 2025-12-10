@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
 from typing import Dict, Optional
+
+from homeconnect_coffee.history import HistoryManager
 
 
 class APICallMonitor:
@@ -16,74 +16,27 @@ class APICallMonitor:
     TOKEN_REFRESH_LIMIT = 100  # HomeConnect API limit: 100 token refreshes/day
     TOKEN_REFRESH_WARNING_THRESHOLD = 50  # Warning at 50 refreshes
 
-    def __init__(self, stats_path: Path) -> None:
+    def __init__(self, history_manager: HistoryManager, json_stats_path: Optional[Path] = None) -> None:
         """Initializes the API call monitor.
         
         Args:
-            stats_path: Path to JSON file for statistics
+            history_manager: HistoryManager instance for SQLite access
+            json_stats_path: Optional path to old JSON file for migration
         """
-        self.stats_path = stats_path
-        self._lock = Lock()
-        self._ensure_stats_file()
-
-    def _ensure_stats_file(self) -> None:
-        """Ensures that the stats file exists."""
-        if not self.stats_path.exists():
-            self.stats_path.parent.mkdir(parents=True, exist_ok=True)
-            self._write_stats({
-                "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                "calls_today": 0,
-                "token_refreshes_today": 0,
-                "last_reset": datetime.now(timezone.utc).isoformat(),
-            })
-
-    def _read_stats(self) -> Dict:
-        """Reads statistics from the file."""
-        with self._lock:
+        self.history_manager = history_manager
+        self._last_day: Optional[str] = None
+        
+        # Migrate from JSON if it exists (errors should not prevent initialization)
+        if json_stats_path and json_stats_path.exists():
             try:
-                if not self.stats_path.exists():
-                    return {
-                        "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                        "calls_today": 0,
-                        "token_refreshes_today": 0,
-                        "last_reset": datetime.now(timezone.utc).isoformat(),
-                    }
-                with open(self.stats_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
-                return {
-                    "current_day": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                    "calls_today": 0,
-                    "token_refreshes_today": 0,
-                    "last_reset": datetime.now(timezone.utc).isoformat(),
-                }
-
-    def _write_stats(self, stats: Dict) -> None:
-        """Writes statistics to the file."""
-        with self._lock:
-            try:
-                with open(self.stats_path, "w", encoding="utf-8") as f:
-                    json.dump(stats, f, indent=2, ensure_ascii=False)
+                self.history_manager.migrate_api_stats_from_json(json_stats_path)
             except Exception as e:
-                print(f"WARNING: Error writing API statistics: {e}")
+                # Migration errors should not prevent monitor from working
+                print(f"WARNING: Failed to migrate API statistics from JSON: {e}")
 
-    def _reset_if_new_day(self, stats: Dict) -> Dict:
-        """Resets statistics if a new day has started."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        current_day = stats.get("current_day", today)
-        
-        if current_day != today:
-            # New day - reset statistics
-            stats = {
-                "current_day": today,
-                "calls_today": 0,
-                "token_refreshes_today": 0,
-                "last_reset": datetime.now(timezone.utc).isoformat(),
-            }
-            self._write_stats(stats)
-            print(f"📊 API call monitor: New day - statistics reset")
-        
-        return stats
+    def _get_today(self) -> str:
+        """Returns today's date as YYYY-MM-DD string."""
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     def record_call(self, endpoint: str, method: str = "GET") -> None:
         """Records an API call.
@@ -92,13 +45,16 @@ class APICallMonitor:
             endpoint: The API endpoint (e.g., "/homeappliances/.../status")
             method: HTTP method (GET, POST, PUT, DELETE)
         """
-        stats = self._read_stats()
-        stats = self._reset_if_new_day(stats)
+        today = self._get_today()
         
-        stats["calls_today"] = stats.get("calls_today", 0) + 1
-        calls_today = stats["calls_today"]
+        # Check if new day and reset if needed
+        if self._last_day and self._last_day != today:
+            print(f"📊 API call monitor: New day - statistics reset")
         
-        self._write_stats(stats)
+        self._last_day = today
+        
+        # Increment counter
+        calls_today = self.history_manager.increment_api_call(today)
         
         # Output warnings
         if calls_today >= self.DAILY_LIMIT:
@@ -117,13 +73,16 @@ class APICallMonitor:
         This tracks token refreshes separately from regular API calls,
         as they have their own rate limit (100 refreshes/day).
         """
-        stats = self._read_stats()
-        stats = self._reset_if_new_day(stats)
+        today = self._get_today()
         
-        stats["token_refreshes_today"] = stats.get("token_refreshes_today", 0) + 1
-        refreshes_today = stats["token_refreshes_today"]
+        # Check if new day and reset if needed
+        if self._last_day and self._last_day != today:
+            print(f"📊 API call monitor: New day - statistics reset")
         
-        self._write_stats(stats)
+        self._last_day = today
+        
+        # Increment counter
+        refreshes_today = self.history_manager.increment_token_refresh(today)
         
         # Output warnings
         if refreshes_today >= self.TOKEN_REFRESH_LIMIT:
@@ -135,16 +94,18 @@ class APICallMonitor:
 
     def get_stats(self) -> Dict:
         """Returns the current statistics."""
-        stats = self._read_stats()
-        stats = self._reset_if_new_day(stats)
-        calls_today = stats.get("calls_today", 0)
-        refreshes_today = stats.get("token_refreshes_today", 0)
+        today = self._get_today()
+        stats = self.history_manager.get_api_statistics(today)
+        
+        calls_today = stats.get("calls_count", 0)
+        refreshes_today = stats.get("token_refreshes_count", 0)
+        
         return {
             "calls_today": calls_today,
             "limit": self.DAILY_LIMIT,
             "remaining": self.DAILY_LIMIT - calls_today,
             "percentage": round((calls_today / self.DAILY_LIMIT) * 100, 1),
-            "current_day": stats.get("current_day", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+            "current_day": today,
             "token_refreshes_today": refreshes_today,
             "token_refresh_limit": self.TOKEN_REFRESH_LIMIT,
             "token_refresh_remaining": self.TOKEN_REFRESH_LIMIT - refreshes_today,
@@ -165,14 +126,37 @@ class APICallMonitor:
 _monitor: Optional[APICallMonitor] = None
 
 
-def get_monitor(stats_path: Optional[Path] = None) -> APICallMonitor:
-    """Returns the global monitor instance."""
+def get_monitor(history_manager: Optional[HistoryManager] = None, json_stats_path: Optional[Path] = None) -> APICallMonitor:
+    """Returns the global monitor instance.
+    
+    Args:
+        history_manager: HistoryManager instance for SQLite access. If None, creates a default one.
+        json_stats_path: Optional path to old JSON file for migration
+    
+    Note:
+        If history_manager is provided and _monitor already exists with a different HistoryManager,
+        the existing monitor will be reused. To ensure the correct HistoryManager is used,
+        call get_monitor() with history_manager before any other code calls get_monitor().
+    """
     global _monitor
     if _monitor is None:
-        if stats_path is None:
-            # Default: In project root
-            stats_path = Path(__file__).parent.parent.parent / "api_stats.json"
-        _monitor = APICallMonitor(stats_path)
+        if history_manager is None:
+            # Default: Use history.db in project root
+            history_path = Path(__file__).parent.parent.parent / "history.db"
+            history_manager = HistoryManager(history_path)
+        if json_stats_path is None:
+            # Default: Check for api_stats.json in project root
+            json_stats_path = Path(__file__).parent.parent.parent / "api_stats.json"
+        try:
+            _monitor = APICallMonitor(history_manager, json_stats_path)
+        except Exception as e:
+            # If initialization fails, try without migration
+            print(f"WARNING: Failed to initialize API monitor with migration: {e}")
+            try:
+                _monitor = APICallMonitor(history_manager, None)
+            except Exception as e2:
+                print(f"ERROR: Failed to initialize API monitor: {e2}")
+                raise
     return _monitor
 
 

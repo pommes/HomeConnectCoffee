@@ -158,9 +158,9 @@ def main() -> None:
     dashboard_module.event_stream_manager = event_stream_manager
     history_module.history_manager = history_manager
 
-    # Initialize API call monitor
-    stats_path = Path(__file__).parent.parent / "api_stats.json"
-    monitor = get_monitor(stats_path)
+    # Initialize API call monitor (uses SQLite via HistoryManager)
+    json_stats_path = Path(__file__).parent.parent / "api_stats.json"
+    monitor = get_monitor(history_manager=history_manager, json_stats_path=json_stats_path)
     monitor.print_stats()  # Show current statistics on startup
 
     # Initialize auth middleware

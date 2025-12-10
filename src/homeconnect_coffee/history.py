@@ -55,6 +55,19 @@ class HistoryManager:
                 cursor.execute("""
                     CREATE INDEX IF NOT EXISTS idx_type ON events(type)
                 """)
+                # Create api_statistics table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS api_statistics (
+                        date TEXT PRIMARY KEY,
+                        calls_count INTEGER DEFAULT 0,
+                        token_refreshes_count INTEGER DEFAULT 0,
+                        last_updated TEXT NOT NULL
+                    )
+                """)
+                # Create index for date queries
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_api_stats_date ON api_statistics(date)
+                """)
                 conn.commit()
             finally:
                 conn.close()
@@ -359,3 +372,180 @@ class HistoryManager:
                 return counts
             finally:
                 conn.close()
+
+    def get_api_statistics(self, date: Optional[str] = None) -> Dict[str, int]:
+        """Gets API statistics for a specific date (YYYY-MM-DD).
+        
+        Args:
+            date: Date string in YYYY-MM-DD format. If None, uses today.
+            
+        Returns:
+            Dictionary with 'calls_count' and 'token_refreshes_count'
+        """
+        if date is None:
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        
+        with self._lock:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT calls_count, token_refreshes_count
+                    FROM api_statistics
+                    WHERE date = ?
+                """, (date,))
+                row = cursor.fetchone()
+                
+                if row:
+                    return {
+                        "calls_count": row[0],
+                        "token_refreshes_count": row[1],
+                    }
+                else:
+                    return {
+                        "calls_count": 0,
+                        "token_refreshes_count": 0,
+                    }
+            finally:
+                conn.close()
+
+    def increment_api_call(self, date: Optional[str] = None) -> int:
+        """Increments the API call counter for a specific date.
+        
+        Args:
+            date: Date string in YYYY-MM-DD format. If None, uses today.
+            
+        Returns:
+            New call count after increment
+        """
+        if date is None:
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        
+        with self._lock:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                # Insert or update
+                cursor.execute("""
+                    INSERT INTO api_statistics (date, calls_count, token_refreshes_count, last_updated)
+                    VALUES (?, 1, 0, ?)
+                    ON CONFLICT(date) DO UPDATE SET
+                        calls_count = calls_count + 1,
+                        last_updated = ?
+                """, (date, datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()))
+                conn.commit()
+                
+                # Get updated count
+                cursor.execute("""
+                    SELECT calls_count FROM api_statistics WHERE date = ?
+                """, (date,))
+                row = cursor.fetchone()
+                return row[0] if row else 1
+            finally:
+                conn.close()
+
+    def increment_token_refresh(self, date: Optional[str] = None) -> int:
+        """Increments the token refresh counter for a specific date.
+        
+        Args:
+            date: Date string in YYYY-MM-DD format. If None, uses today.
+            
+        Returns:
+            New refresh count after increment
+        """
+        if date is None:
+            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        
+        with self._lock:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                # Insert or update
+                cursor.execute("""
+                    INSERT INTO api_statistics (date, calls_count, token_refreshes_count, last_updated)
+                    VALUES (?, 0, 1, ?)
+                    ON CONFLICT(date) DO UPDATE SET
+                        token_refreshes_count = token_refreshes_count + 1,
+                        last_updated = ?
+                """, (date, datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()))
+                conn.commit()
+                
+                # Get updated count
+                cursor.execute("""
+                    SELECT token_refreshes_count FROM api_statistics WHERE date = ?
+                """, (date,))
+                row = cursor.fetchone()
+                return row[0] if row else 1
+            finally:
+                conn.close()
+
+    def migrate_api_stats_from_json(self, json_path: Path) -> bool:
+        """Migrates API statistics from JSON file to SQLite.
+        
+        Args:
+            json_path: Path to api_stats.json file
+            
+        Returns:
+            True if migration was successful, False otherwise
+        """
+        if not json_path.exists():
+            return False
+        
+        try:
+            with self._lock:
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        json_data = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError) as e:
+                    print(f"WARNING: Could not read API statistics JSON file: {e}")
+                    return False
+                
+                current_day = json_data.get("current_day")
+                calls_today = json_data.get("calls_today", 0)
+                token_refreshes_today = json_data.get("token_refreshes_today", 0)
+                
+                if not current_day:
+                    print(f"WARNING: API statistics JSON file missing 'current_day' field")
+                    return False
+                
+                try:
+                    conn = sqlite3.connect(str(self.db_path))
+                    try:
+                        cursor = conn.cursor()
+                        # Insert or update statistics for the current day
+                        cursor.execute("""
+                            INSERT INTO api_statistics (date, calls_count, token_refreshes_count, last_updated)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT(date) DO UPDATE SET
+                                calls_count = ?,
+                                token_refreshes_count = ?,
+                                last_updated = ?
+                        """, (
+                            current_day,
+                            calls_today,
+                            token_refreshes_today,
+                            datetime.now(timezone.utc).isoformat(),
+                            calls_today,
+                            token_refreshes_today,
+                            datetime.now(timezone.utc).isoformat(),
+                        ))
+                        conn.commit()
+                        
+                        # Backup JSON file
+                        backup_path = json_path.with_suffix(".json.backup")
+                        try:
+                            json_path.rename(backup_path)
+                            print(f"✓ API statistics migrated from {json_path.name} to SQLite")
+                            print(f"  Original JSON backed up as {backup_path.name}")
+                        except Exception as e:
+                            print(f"WARNING: Could not rename JSON to backup: {e}")
+                        
+                        return True
+                    finally:
+                        conn.close()
+                except Exception as e:
+                    print(f"WARNING: Failed to migrate API statistics to SQLite: {e}")
+                    return False
+        except Exception as e:
+            print(f"WARNING: Unexpected error during API statistics migration: {e}")
+            return False

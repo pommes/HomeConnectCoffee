@@ -112,8 +112,9 @@ class StatusService:
         # Get API statistics
         try:
             api_stats = get_monitor().get_stats()
-        except Exception:
+        except Exception as e:
             # If monitoring fails, continue without stats
+            logger.debug(f"Could not get API statistics: {e}")
             api_stats = {}
 
         return {
