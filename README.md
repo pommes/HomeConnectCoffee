@@ -563,8 +563,8 @@ make release  # → 1.2.1
 ```
 
 The release script will:
-1. Check that the repository is clean and on the main branch
-2. Verify that `CHANGELOG.md` contains the new version
+1. Check that the repository is clean and on the main/master branch or a maintenance branch
+2. Verify that `CHANGELOG.md` contains the new version (for release versions only)
 3. Remove the prerelease suffix from the `VERSION` file
 4. Create a git commit and tag
 5. Push to GitHub
@@ -604,6 +604,69 @@ Development versions (`-dev` suffix) are committed but not tagged. They are typi
 
 ```bash
 make release-dev  # Creates 1.2.1-dev (rarely needed)
+```
+
+### Maintenance Branches
+
+For maintaining older versions while developing new features, maintenance branches are used. This allows you to release bugfixes for older versions (e.g., 1.2.x) while continuing development of new features (e.g., 1.3.x) on the main branch.
+
+#### Creating a Maintenance Branch
+
+After releasing a version (e.g., 1.2.2), create a maintenance branch:
+
+```bash
+# After releasing 1.2.2, create maintenance branch
+git checkout -b maintenance/1.2
+git push -u origin maintenance/1.2
+```
+
+#### Creating Bugfix Releases
+
+To create a bugfix release for an older version:
+
+```bash
+# Switch to maintenance branch
+git checkout maintenance/1.2
+
+# Develop and commit bugfix
+# ... make changes ...
+git commit -m "Fix: Description of the bug"
+
+# Create patch release (e.g., 1.2.2 → 1.2.3)
+make release  # or: python3 scripts/release.py --release
+
+# The script will:
+# 1. Check that you're on a maintenance branch
+# 2. Verify CHANGELOG.md contains the new version
+# 3. Increment patch version (1.2.2 → 1.2.3)
+# 4. Create git commit and tag
+# 5. Push to GitHub
+# 6. GitHub Actions will create a GitHub release
+```
+
+**Important:**
+- Maintenance branches follow the pattern `maintenance/X.Y` (e.g., `maintenance/1.2`)
+- Only patch releases (X.Y.Z) are created from maintenance branches
+- New features should be developed on the `main` branch
+- The release script supports both `main`/`master` and `maintenance/*` branches
+
+#### Workflow Example
+
+```bash
+# Main branch: Development of version 1.3
+git checkout main
+# ... develop new features ...
+# Version: 1.3.0-dev
+
+# Maintenance branch: Bugfix for version 1.2
+git checkout maintenance/1.2
+# ... fix bug ...
+git commit -m "Fix: Critical bug in 1.2"
+make release  # Creates 1.2.3
+
+# Back to main for new features
+git checkout main
+# Continue development of 1.3...
 ```
 
 ## Further Ideas
