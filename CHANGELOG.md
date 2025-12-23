@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.2.2] - 2025-12-10
+
+### Added
+
+#### API Monitoring Enhancements
+- **Commit:** [`fed7100`](https://github.com/pommes/HomeConnectCoffee/commit/fed7100)
+- Enhanced `HistoryManager` with new methods for API call and token refresh statistics
+
+#### Rate Limit Handling and Caching
+- **Commit:** [`2d2c116`](https://github.com/pommes/HomeConnectCoffee/commit/2d2c116)
+- Implemented exponential backoff for handling 429 Rate Limit responses in `HomeConnectClient`
+- Automatic retry mechanism with up to three retries and increasing wait times
+- Introduced caching mechanism in `StatusService` for extended status queries (10-second TTL)
+- Reduced API calls and improved resilience against rate limit errors
+
+#### Token Refresh Statistics
+- **Commit:** [`8dad36a`](https://github.com/pommes/HomeConnectCoffee/commit/8dad36a)
+- Added tracking for token refresh operations in API monitoring system
+- Dashboard now displays API call and token refresh statistics with daily limits and usage warnings
+- Real-time insights into API usage and token refresh frequency
+
+#### EventStreamManager Reliability Improvements
+- **Commit:** [`e131513`](https://github.com/pommes/HomeConnectCoffee/commit/e131513)
+- Added heartbeat monitoring to track KEEP-ALIVE events from HomeConnect API
+- Implemented automatic reconnection on heartbeat timeout
+- Configurable heartbeat timeout via `HEARTBEAT_TEST_TIMEOUT` environment variable for testing
+- Dashboard displays connection status (browser and API connection states) with tooltips
+
+#### History Statistics Enhancements
+- **Commit:** [`8da493d`](https://github.com/pommes/HomeConnectCoffee/commit/8da493d)
+- Added `_is_brew_program` static method to determine program type
+
+#### Installation and Documentation
+- **Commit:** [`f44d122`](https://github.com/pommes/HomeConnectCoffee/commit/f44d122)
+- Added `install-bootstrap.sh` script for easy installation setup
+- Enhanced README.md with comprehensive installation instructions
+- **Commit:** [`5f3144d`](https://github.com/pommes/HomeConnectCoffee/commit/5f3144d)
+- Added troubleshooting section for common API errors
+- Improved documentation for error handling and API usage limits
+- **Commit:** [`08d94c6`](https://github.com/pommes/HomeConnectCoffee/commit/08d94c6)
+- Enhanced README and server script for improved configuration management
+
+### Changed
+
+#### API Monitoring Architecture
+- **Commit:** [`fed7100`](https://github.com/pommes/HomeConnectCoffee/commit/fed7100)
+- Migrated API statistics storage from JSON files to SQLite database
+- Improved data management and query performance
+- Better integration with existing history database infrastructure
+- Seamless migration from JSON to SQLite with automatic data transfer
+
+#### Rate Limit Error Handling
+- **Commit:** [`2d2c116`](https://github.com/pommes/HomeConnectCoffee/commit/2d2c116)
+- Updated `ErrorHandler` to return correct ErrorCode for rate limit errors (429) instead of gateway timeout (503)
+- Improved error classification and user feedback for rate limit scenarios
+
+#### History Statistics Filtering
+- **Commit:** [`8da493d`](https://github.com/pommes/HomeConnectCoffee/commit/8da493d)
+- Enhanced `get_daily_usage` and `get_program_counts` methods to exclude cleaning programs
+- Only brew programs are now counted in usage statistics
+- More accurate representation of actual coffee brewing activity
+
+#### Error Handling Improvements
+- **Commit:** [`8dad36a`](https://github.com/pommes/HomeConnectCoffee/commit/8dad36a)
+- Enhanced error handling for 401 Unauthorized and 409 Conflict responses
+
+#### Logging and Event Handling
+- **Commit:** [`469c51d`](https://github.com/pommes/HomeConnectCoffee/commit/469c51d)
+- Enhanced logging and event handling in dashboard and server scripts
+
+### Fixed
+
+- **Commit:** [`469c51d`](https://github.com/pommes/HomeConnectCoffee/commit/469c51d)
+- Fixed event stream connection management issues in dashboard
+- Existing connections are now properly closed before establishing new ones
+- Improved handling of connection state transitions
+
 ## [1.2.1] - 2025-11-30
 
 ### Added
@@ -320,7 +397,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token-based authentication for protected endpoints
 - Secrets in `.env` and `tokens.json` (not in Git)
 
-[Unreleased]: https://github.com/pommes/HomeConnectCoffee/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/pommes/HomeConnectCoffee/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/pommes/HomeConnectCoffee/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/pommes/HomeConnectCoffee/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/pommes/HomeConnectCoffee/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/pommes/HomeConnectCoffee/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/pommes/HomeConnectCoffee/compare/9448183...d2b9420
