@@ -294,7 +294,14 @@
         </div>
 
         <div class="grid">
-            <div class="card full-width">
+            <div class="card">
+                <h2>Program Statistics</h2>
+                <div id="programStatistics">
+                    <div class="loading">Loading statistics...</div>
+                </div>
+            </div>
+
+            <div class="card">
                 <h2>Program Usage</h2>
                 <div class="chart-container">
                     <canvas id="programChart"></canvas>
@@ -357,28 +364,51 @@
         });
 
         function initCharts() {
-            // Program usage chart
+            // Program usage chart (doughnut)
             const programCtx = document.getElementById('programChart').getContext('2d');
             programChart = new Chart(programCtx, {
-                type: 'bar',
+                type: 'doughnut',
                 data: {
                     labels: [],
                     datasets: [{
                         label: 'Count',
                         data: [],
-                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
-                        borderColor: 'rgba(102, 126, 234, 1)',
-                        borderWidth: 1
+                        backgroundColor: [
+                            'rgba(102, 126, 234, 0.8)',
+                            'rgba(118, 75, 162, 0.8)',
+                            'rgba(255, 152, 0, 0.8)',
+                            'rgba(76, 175, 80, 0.8)',
+                            'rgba(244, 67, 54, 0.8)',
+                            'rgba(33, 150, 243, 0.8)',
+                            'rgba(156, 39, 176, 0.8)',
+                            'rgba(255, 193, 7, 0.8)',
+                        ],
+                        borderColor: [
+                            'rgba(102, 126, 234, 1)',
+                            'rgba(118, 75, 162, 1)',
+                            'rgba(255, 152, 0, 1)',
+                            'rgba(76, 175, 80, 1)',
+                            'rgba(244, 67, 54, 1)',
+                            'rgba(33, 150, 243, 1)',
+                            'rgba(156, 39, 176, 1)',
+                            'rgba(255, 193, 7, 1)',
+                        ],
+                        borderWidth: 2
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                stepSize: 1
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
                             }
                         }
                     }
@@ -840,20 +870,38 @@
                     ? `${API_BASE}/api/history?program_counts=1&token=${encodeURIComponent(API_TOKEN)}`
                     : `${API_BASE}/api/history?program_counts=1`;
                 const countsResponse = await fetch(countsUrl);
+                let programCounts = {};
                 if (countsResponse.ok) {
                     const countsData = await countsResponse.json();
-                    updateProgramChart(countsData.program_counts || {});
+                    programCounts = countsData.program_counts || {};
+                    updateProgramChart(programCounts);
                 }
 
-                // Daily usage
+                // Daily usage (7 days for chart)
                 const dailyUrl = API_TOKEN
                     ? `${API_BASE}/api/history?daily_usage=1&days=7&token=${encodeURIComponent(API_TOKEN)}`
                     : `${API_BASE}/api/history?daily_usage=1&days=7`;
                 const dailyResponse = await fetch(dailyUrl);
+                let dailyUsage = {};
                 if (dailyResponse.ok) {
                     const dailyData = await dailyResponse.json();
-                    updateDailyChart(dailyData.daily_usage || {});
+                    dailyUsage = dailyData.daily_usage || {};
+                    updateDailyChart(dailyUsage);
                 }
+
+                // Monthly usage (30 days for statistics)
+                const monthlyUrl = API_TOKEN
+                    ? `${API_BASE}/api/history?daily_usage=1&days=30&token=${encodeURIComponent(API_TOKEN)}`
+                    : `${API_BASE}/api/history?daily_usage=1&days=30`;
+                const monthlyResponse = await fetch(monthlyUrl);
+                let monthlyUsage = {};
+                if (monthlyResponse.ok) {
+                    const monthlyData = await monthlyResponse.json();
+                    monthlyUsage = monthlyData.daily_usage || {};
+                }
+
+                // Update statistics with all datasets
+                updateProgramStatistics(programCounts, dailyUsage, monthlyUsage);
             } catch (error) {
                 console.error('Error loading history:', error);
             }
@@ -1220,6 +1268,75 @@
             programChart.data.labels = labels;
             programChart.data.datasets[0].data = values;
             programChart.update();
+        }
+
+        function updateProgramStatistics(programCounts, dailyUsage, monthlyUsage) {
+            const statsDiv = document.getElementById('programStatistics');
+            
+            if (!programCounts || Object.keys(programCounts).length === 0) {
+                statsDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-value" style="color: #666;">No data yet</span>
+                    </div>
+                `;
+                return;
+            }
+
+            // Calculate total count
+            const totalCount = Object.values(programCounts).reduce((a, b) => a + b, 0);
+            
+            // Calculate average per day (last 7 days)
+            const dailyValues = Object.values(dailyUsage || {});
+            const totalLast7Days = dailyValues.reduce((a, b) => a + b, 0);
+            const averagePerDay = dailyValues.length > 0 ? (totalLast7Days / dailyValues.length).toFixed(1) : 0;
+            
+            // Calculate average per week (last 7 days total)
+            const averagePerWeek = totalLast7Days.toFixed(1);
+            
+            // Calculate average per month (last 30 days total, or extrapolated from 7-day average)
+            const monthlyValues = Object.values(monthlyUsage || {});
+            const totalLast30Days = monthlyValues.reduce((a, b) => a + b, 0);
+            // If we have 30 days of data, use it; otherwise extrapolate from 7-day average
+            const averagePerMonth = monthlyValues.length >= 30 
+                ? totalLast30Days.toFixed(1)
+                : (averagePerDay * 30).toFixed(1);
+            
+            // Find most used program
+            const programEntries = Object.entries(programCounts);
+            const mostUsed = programEntries.sort((a, b) => b[1] - a[1])[0];
+            const mostUsedName = formatProgramName(mostUsed[0]);
+            const mostUsedCount = mostUsed[1];
+            
+            // Get today's count
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const todayCount = dailyUsage && dailyUsage[today] ? dailyUsage[today] : 0;
+
+            statsDiv.innerHTML = `
+                <div class="status-item">
+                    <span class="status-label">Total Brewed:</span>
+                    <span class="status-value">${totalCount}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Average per Day:</span>
+                    <span class="status-value">${averagePerDay}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Average per Week:</span>
+                    <span class="status-value">${averagePerWeek}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Average per Month:</span>
+                    <span class="status-value">${averagePerMonth}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Most Used:</span>
+                    <span class="status-value">${mostUsedName} (${mostUsedCount})</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Today:</span>
+                    <span class="status-value">${todayCount}</span>
+                </div>
+            `;
         }
 
         function updateDailyChart(dailyUsage) {
