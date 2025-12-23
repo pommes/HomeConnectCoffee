@@ -84,6 +84,16 @@ LOG_SENSITIVE=false
 
 # Systemd user for the service (only used by install.sh, default: current user)
 COFFEE_SERVER_USER=
+
+# Database Sync Configuration (optional, for sync_history_db.sh script)
+# SSH connection string for remote host
+SYNC_DB_REMOTE_HOST=user@hostname.local
+# Remote database path on remote host
+SYNC_DB_REMOTE_PATH=/opt/homeconnect_coffee/history.db
+# Local database path (default: project root/history.db)
+SYNC_DB_LOCAL_PATH=
+# Local backup path (default: project root/history.db.local.backup)
+SYNC_DB_LOCAL_BACKUP_PATH=
 ```
 
 **Important:**

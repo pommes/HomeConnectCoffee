@@ -18,38 +18,44 @@ FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history test test-unit test-cov release release-dev release-alpha release-beta release-rc
+.PHONY: help init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history sync_history_db test test-unit test-cov release release-dev release-alpha release-beta release-rc
 
-init: init_venv install_deps
+help: ## This help
+	@echo "----------------------------"
+	@echo "Available targets:"
+	@grep -Eh '^[0-9a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
-init_venv:
+
+init: init_venv install_deps ## Setup virtual environment and install dependencies
+
+init_venv: ## Create Python virtual environment
 	test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
 
-install_deps: init_venv
+install_deps: init_venv ## Install Python dependencies from requirements.txt
 	@$(PIP) install -q -r requirements.txt
 
-auth: init
+auth: init ## Start OAuth authentication flow (AUTH_ARGS=...)
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_AUTH) $(AUTH_ARGS)
 
-brew: init
+brew: init ## Brew espresso with specified fill amount (FILL_ML=50, STRENGTH=Normal, BREW_ARGS=...)
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_BREW) --fill-ml $(FILL_ML) --strength $(STRENGTH) $(BREW_ARGS)
 
-status: init
+status: init ## Show device status (STATUS_ARGS=...)
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_STATUS) $(STATUS_ARGS)
 
-events: init
+events: init ## Monitor event stream (EVENTS_LIMIT=0, EVENTS_ARGS=...)
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_EVENTS) --limit $(EVENTS_LIMIT) $(EVENTS_ARGS)
 
-wake: init
+wake: init ## Wake device from standby
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_WAKE)
 
-server: init
+server: init ## Start HTTP server (SERVER_ARGS=...)
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_SERVER) $(SERVER_ARGS)
 
-dashboard: init
+dashboard: init ## Start HTTP server (alias for server) (SERVER_ARGS=...)
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_SERVER) $(SERVER_ARGS)
 
-clean_tokens:
+clean_tokens: ## Remove token files
 	rm -f $(HOME_CONNECT_TOKEN_PATH) tokens.json
 
 CERT_DIR := $(THIS_DIR)/certs
@@ -59,7 +65,7 @@ KEY_FILE := $(CERT_DIR)/server.key
 # Can also be overridden as Make variable: make cert CERT_HOSTNAME=my-hostname.local
 CERT_HOSTNAME ?= $(shell grep -E '^CERT_HOSTNAME=' $(THIS_DIR)/.env 2>/dev/null | cut -d '=' -f2- || echo "")
 
-cert: $(CERT_FILE) $(KEY_FILE)
+cert: $(CERT_FILE) $(KEY_FILE) ## Generate self-signed SSL certificate (CERT_HOSTNAME=...)
 
 $(CERT_DIR):
 	mkdir -p $(CERT_DIR)
@@ -81,61 +87,65 @@ $(CERT_FILE) $(KEY_FILE): $(CERT_DIR)
 	@echo "Certificate created: $(CERT_FILE)"
 	@echo "Private key created: $(KEY_FILE)"
 
-cert_install: $(CERT_FILE)
+cert_install: $(CERT_FILE) ## Install certificate in Mac keychain
 	@echo "Installing certificate in Mac keychain..."
 	security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db $(CERT_FILE) || \
 	security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain $(CERT_FILE) || \
 	security add-trusted-cert -d -r trustRoot $(CERT_FILE)
 	@echo "Certificate has been installed in keychain."
 
-cert_export: $(CERT_FILE)
+cert_export: $(CERT_FILE) ## Open certificate in Finder for AirDrop
 	@echo "Opening Finder with certificate for AirDrop..."
 	@open -R $(CERT_FILE)
 	@echo "Certificate file has been opened in Finder."
 	@echo "You can now send it to your iOS device via AirDrop."
 
-fix_history:
+fix_history: ## Process existing events and add missing program_started events
 	@echo "Processing existing events in history..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/fix_history.py
 
-migrate_history: init
+migrate_history: init ## Migrate events from history.json to history.db
 	@echo "Migrating events from history.json to history.db..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/migrate_to_sqlite.py
 
-export_history: init
+export_history: init ## Export events from history.db to history.json
 	@echo "Exporting events from history.db to history.json..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/export_to_json.py
 
-test: init
+sync_history_db: ## Sync history.db from remote host to local development environment
+	@echo "Syncing history.db from Raspberry Pi to local development environment..."
+	@$(THIS_DIR)/scripts/sync_history_db.sh
+
+test: init ## Run all tests
 	@echo "Running tests..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest
 
-test-unit: init
+test-unit: init ## Run unit tests only
 	@echo "Running unit tests..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest -m unit
 
-test-cov: init
+test-cov: init ## Run tests with coverage report
 	@echo "Running tests with coverage report..."
 	@PYTHONPATH=$(PYTHONPATH) $(VENV_DIR)/bin/pytest --cov=src/homeconnect_coffee --cov-report=term-missing --cov-report=html
 
 # Release targets
-release: init
+release: init ## Create release version (remove prerelease suffix) (RELEASE_ARGS=...)
 	@echo "Creating release (removing prerelease suffix)..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --release $(RELEASE_ARGS)
 
-release-dev: init
+release-dev: init ## Create development version (RELEASE_ARGS=...)
 	@echo "Creating development version..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --dev $(RELEASE_ARGS)
 
-release-alpha: init
+release-alpha: init ## Create alpha pre-release (RELEASE_ARGS=...)
 	@echo "Creating alpha pre-release..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --alpha $(RELEASE_ARGS)
 
-release-beta: init
+release-beta: init ## Create beta pre-release (RELEASE_ARGS=...)
 	@echo "Creating beta pre-release..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --beta $(RELEASE_ARGS)
 
-release-rc: init
+release-rc: init ## Create release candidate (RELEASE_ARGS=...)
 	@echo "Creating release candidate..."
 	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) $(SCRIPT_RELEASE) --rc $(RELEASE_ARGS)
 

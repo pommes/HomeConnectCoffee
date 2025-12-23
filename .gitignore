@@ -6,8 +6,7 @@ __pycache__/
 certs/
 history.json
 history.json.backup
-history.db
-history.db-*
+history.db*
 # Test-Coverage
 .coverage
 coverage.xml
