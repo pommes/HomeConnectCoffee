@@ -385,9 +385,33 @@ def main() -> None:
         if not args.dry_run:
             push_to_github(new_version, dry_run=args.dry_run)
             if args.release:
+                # Automatically create next dev version after release
+                major, minor, patch, _, _ = parse_version(new_version)
+                
+                # Check current branch to determine version increment strategy
+                result = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                current_branch = result.stdout.strip()
+                
+                # On maintenance branches, increment patch; on main, increment minor
+                if current_branch.startswith("maintenance/"):
+                    next_dev_version = f"{major}.{minor}.{patch + 1}-dev"
+                else:
+                    # On main/master, increment minor version for new features
+                    next_dev_version = f"{major}.{minor + 1}.0-dev"
+                
+                # Create next dev version
+                write_version(next_dev_version)
+                commit_version(next_dev_version, dry_run=False)
+                push_to_github(next_dev_version, dry_run=False)
+                
                 print(f"\n✓ Release {new_version} created successfully!")
                 print("GitHub Actions will automatically create a release.")
-                print("After successful release, GitHub Actions will create the next dev version.")
+                print(f"✓ Next dev version {next_dev_version} created automatically.")
             elif prerelease_type == "dev":
                 print(f"\n✓ Dev version {new_version} committed successfully!")
                 print("(No tag created for dev versions)")
@@ -399,8 +423,24 @@ def main() -> None:
             if args.release:
                 # Show what would happen after release
                 major, minor, patch, _, _ = parse_version(new_version)
-                next_dev_version = f"{major}.{minor}.{patch + 1}-dev"
-                print(f"[DRY RUN] After release, GitHub Actions would create dev version: {next_dev_version}")
+                
+                # Check current branch to determine version increment strategy
+                result = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                current_branch = result.stdout.strip()
+                
+                # On maintenance branches, increment patch; on main, increment minor
+                if current_branch.startswith("maintenance/"):
+                    next_dev_version = f"{major}.{minor}.{patch + 1}-dev"
+                else:
+                    # On main/master, increment minor version for new features
+                    next_dev_version = f"{major}.{minor + 1}.0-dev"
+                
+                print(f"[DRY RUN] After release, would create dev version: {next_dev_version}")
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

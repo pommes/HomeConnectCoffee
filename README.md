@@ -569,14 +569,26 @@ The release script will:
 4. Create a git commit and tag
 5. Push to GitHub
 6. GitHub Actions will automatically create a GitHub release
+7. **Automatically create the next dev version** (only for release versions, not pre-releases)
 
 ### Automatic Dev Version Creation
 
-After a successful release, GitHub Actions automatically creates the next development version:
-- Release `1.2.1` → Dev version `1.2.2-dev` is automatically created
-- This happens only for release versions (not for pre-releases like alpha/beta/rc)
+After a successful release, the release script automatically creates the next development version:
 
-**Important:** After a release, remember to pull the changes locally:
+- **On main/master branch:** Release `1.2.2` → Dev version `1.3.0-dev` (minor increment for new features)
+- **On maintenance branches:** Release `1.2.2` → Dev version `1.2.3-dev` (patch increment for bugfixes)
+
+**Examples:**
+```bash
+# Release on main branch
+make release  # 1.2.2 → creates 1.3.0-dev automatically
+
+# Release on maintenance branch
+git checkout maintenance/1.2
+make release  # 1.2.2 → creates 1.2.3-dev automatically
+```
+
+**Important:** After a release, the dev version is automatically created and pushed. Pull the changes locally:
 ```bash
 git pull
 ```
