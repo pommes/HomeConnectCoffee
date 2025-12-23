@@ -174,7 +174,7 @@ def check_git_status() -> None:
     if result.stdout.strip():
         raise RuntimeError("Uncommitted changes detected. Please commit or stash them first.")
     
-    # Check branch (should be main or master)
+    # Check branch (should be main, master, or maintenance branch)
     result = subprocess.run(
         ["git", "branch", "--show-current"],
         capture_output=True,
@@ -182,8 +182,11 @@ def check_git_status() -> None:
         check=True,
     )
     branch = result.stdout.strip()
-    if branch not in ("main", "master"):
-        raise RuntimeError(f"Not on main/master branch (current: {branch})")
+    if branch not in ("main", "master") and not branch.startswith("maintenance/"):
+        raise RuntimeError(
+            f"Not on main/master or maintenance branch (current: {branch}). "
+            "Releases can only be created from main/master or maintenance/* branches."
+        )
 
 
 def check_changelog(version: str) -> None:
