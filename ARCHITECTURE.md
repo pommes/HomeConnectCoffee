@@ -52,7 +52,7 @@ The HomeConnect Coffee project is a Python application for controlling HomeConne
 - **Features:**
   - Daily statistics with automatic reset
   - Warnings at 80%, 95%, 100% of limit
-  - Persistence in `api_stats.json`
+  - Persistence in SQLite database (`history.db`)
 
 ### HTTP Server (`scripts/server.py`)
 

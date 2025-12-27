@@ -12,23 +12,15 @@ class HistoryManager:
     """Manages history data for the dashboard with SQLite."""
 
     def __init__(self, history_path: Path) -> None:
-        """Initializes the HistoryManager with SQLite database.
-        
-        If history.json exists, it will be automatically migrated.
-        """
-        # Convert .json path to .db path
-        if history_path.suffix == ".json":
+        """Initializes the HistoryManager with SQLite database."""
+        # Ensure .db extension
+        if history_path.suffix != ".db":
             self.db_path = history_path.with_suffix(".db")
-            self.json_path = history_path
         else:
             self.db_path = history_path
-            self.json_path = history_path.with_suffix(".json")
         
         self._lock = Lock()  # Lock for thread-safe access
         self._ensure_database()
-        
-        # Automatic migration from JSON to SQLite
-        self._migrate_from_json_if_needed()
 
     def _ensure_database(self) -> None:
         """Ensures that the SQLite database exists and the schema is created."""
@@ -69,64 +61,6 @@ class HistoryManager:
                     CREATE INDEX IF NOT EXISTS idx_api_stats_date ON api_statistics(date)
                 """)
                 conn.commit()
-            finally:
-                conn.close()
-
-    def _migrate_from_json_if_needed(self) -> None:
-        """Migrates events from history.json to history.db if JSON exists and DB is empty."""
-        if not self.json_path.exists():
-            return  # No JSON file present
-        
-        with self._lock:
-            conn = sqlite3.connect(str(self.db_path))
-            try:
-                cursor = conn.cursor()
-                # Check if DB already contains events
-                cursor.execute("SELECT COUNT(*) FROM events")
-                count = cursor.fetchone()[0]
-                
-                if count > 0:
-                    # DB already contains events, no migration needed
-                    return
-                
-                # Load events from JSON
-                try:
-                    with open(self.json_path, "r", encoding="utf-8") as f:
-                        json_events = json.load(f)
-                except (json.JSONDecodeError, FileNotFoundError):
-                    return  # JSON is corrupted or not readable
-                
-                if not json_events:
-                    return  # JSON is empty
-                
-                # Import events into SQLite
-                imported = 0
-                for event in json_events:
-                    try:
-                        timestamp = event.get("timestamp", "")
-                        event_type = event.get("type", "")
-                        data_json = json.dumps(event.get("data", {}), ensure_ascii=False)
-                        
-                        cursor.execute(
-                            "INSERT INTO events (timestamp, type, data) VALUES (?, ?, ?)",
-                            (timestamp, event_type, data_json)
-                        )
-                        imported += 1
-                    except Exception as e:
-                        print(f"WARNING: Error importing event: {e}")
-                        continue
-                
-                conn.commit()
-                
-                if imported > 0:
-                    # Rename JSON file to backup
-                    backup_path = self.json_path.with_suffix(".json.backup")
-                    try:
-                        self.json_path.rename(backup_path)
-                        print(f"✓ {imported} events migrated from {self.json_path.name} to {self.db_path.name}")
-                        print(f"  Original JSON backed up as {backup_path.name}")
-                    except Exception as e:
-                        print(f"WARNING: Could not rename JSON to backup: {e}")
             finally:
                 conn.close()
 
@@ -478,74 +412,3 @@ class HistoryManager:
                 return row[0] if row else 1
             finally:
                 conn.close()
-
-    def migrate_api_stats_from_json(self, json_path: Path) -> bool:
-        """Migrates API statistics from JSON file to SQLite.
-        
-        Args:
-            json_path: Path to api_stats.json file
-            
-        Returns:
-            True if migration was successful, False otherwise
-        """
-        if not json_path.exists():
-            return False
-        
-        try:
-            with self._lock:
-                try:
-                    with open(json_path, "r", encoding="utf-8") as f:
-                        json_data = json.load(f)
-                except (json.JSONDecodeError, FileNotFoundError) as e:
-                    print(f"WARNING: Could not read API statistics JSON file: {e}")
-                    return False
-                
-                current_day = json_data.get("current_day")
-                calls_today = json_data.get("calls_today", 0)
-                token_refreshes_today = json_data.get("token_refreshes_today", 0)
-                
-                if not current_day:
-                    print(f"WARNING: API statistics JSON file missing 'current_day' field")
-                    return False
-                
-                try:
-                    conn = sqlite3.connect(str(self.db_path))
-                    try:
-                        cursor = conn.cursor()
-                        # Insert or update statistics for the current day
-                        cursor.execute("""
-                            INSERT INTO api_statistics (date, calls_count, token_refreshes_count, last_updated)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(date) DO UPDATE SET
-                                calls_count = ?,
-                                token_refreshes_count = ?,
-                                last_updated = ?
-                        """, (
-                            current_day,
-                            calls_today,
-                            token_refreshes_today,
-                            datetime.now(timezone.utc).isoformat(),
-                            calls_today,
-                            token_refreshes_today,
-                            datetime.now(timezone.utc).isoformat(),
-                        ))
-                        conn.commit()
-                        
-                        # Backup JSON file
-                        backup_path = json_path.with_suffix(".json.backup")
-                        try:
-                            json_path.rename(backup_path)
-                            print(f"✓ API statistics migrated from {json_path.name} to SQLite")
-                            print(f"  Original JSON backed up as {backup_path.name}")
-                        except Exception as e:
-                            print(f"WARNING: Could not rename JSON to backup: {e}")
-                        
-                        return True
-                    finally:
-                        conn.close()
-                except Exception as e:
-                    print(f"WARNING: Failed to migrate API statistics to SQLite: {e}")
-                    return False
-        except Exception as e:
-            print(f"WARNING: Unexpected error during API statistics migration: {e}")
-            return False

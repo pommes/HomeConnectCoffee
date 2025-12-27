@@ -139,7 +139,7 @@ def main() -> None:
     api_token = args.api_token or os.getenv("COFFEE_API_TOKEN")
 
     # Initialize history manager
-    history_path = Path(__file__).parent.parent / "history.json"
+    history_path = Path(__file__).parent.parent / "history.db"
     history_manager = HistoryManager(history_path)
 
     # Initialize event stream manager
@@ -159,8 +159,7 @@ def main() -> None:
     history_module.history_manager = history_manager
 
     # Initialize API call monitor (uses SQLite via HistoryManager)
-    json_stats_path = Path(__file__).parent.parent / "api_stats.json"
-    monitor = get_monitor(history_manager=history_manager, json_stats_path=json_stats_path)
+    monitor = get_monitor(history_manager=history_manager)
     monitor.print_stats()  # Show current statistics on startup
 
     # Initialize auth middleware

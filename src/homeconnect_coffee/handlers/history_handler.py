@@ -100,10 +100,9 @@ class HistoryHandler:
                 from ..history import HistoryManager
                 history_manager = HistoryManager(history_path)
             
-            # Get monitor with history_manager (migration from JSON happens automatically)
-            json_stats_path = Path(__file__).parent.parent.parent.parent / "api_stats.json"
+            # Get monitor with history_manager
             try:
-                monitor = get_monitor(history_manager=history_manager, json_stats_path=json_stats_path)
+                monitor = get_monitor(history_manager=history_manager)
                 stats = monitor.get_stats()
                 router._send_json(stats, status_code=200)
             except Exception as monitor_error:

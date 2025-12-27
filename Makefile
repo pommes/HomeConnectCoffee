@@ -18,7 +18,7 @@ FILL_ML ?= 50
 STRENGTH ?= Normal
 EVENTS_LIMIT ?= 0
 
-.PHONY: help init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export fix_history migrate_history export_history sync_history_db test test-unit test-cov release release-dev release-alpha release-beta release-rc
+.PHONY: help init init_venv install_deps auth brew status events wake server dashboard clean_tokens cert cert_install cert_export sync_history_db test test-unit test-cov release release-dev release-alpha release-beta release-rc
 
 help: ## This help
 	@echo "----------------------------"
@@ -99,18 +99,6 @@ cert_export: $(CERT_FILE) ## Open certificate in Finder for AirDrop
 	@open -R $(CERT_FILE)
 	@echo "Certificate file has been opened in Finder."
 	@echo "You can now send it to your iOS device via AirDrop."
-
-fix_history: ## Process existing events and add missing program_started events
-	@echo "Processing existing events in history..."
-	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/fix_history.py
-
-migrate_history: init ## Migrate events from history.json to history.db
-	@echo "Migrating events from history.json to history.db..."
-	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/migrate_to_sqlite.py
-
-export_history: init ## Export events from history.db to history.json
-	@echo "Exporting events from history.db to history.json..."
-	@PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/export_to_json.py
 
 sync_history_db: ## Sync history.db from remote host to local development environment
 	@echo "Syncing history.db from Raspberry Pi to local development environment..."

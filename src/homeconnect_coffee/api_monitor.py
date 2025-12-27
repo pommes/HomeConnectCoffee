@@ -16,23 +16,14 @@ class APICallMonitor:
     TOKEN_REFRESH_LIMIT = 100  # HomeConnect API limit: 100 token refreshes/day
     TOKEN_REFRESH_WARNING_THRESHOLD = 50  # Warning at 50 refreshes
 
-    def __init__(self, history_manager: HistoryManager, json_stats_path: Optional[Path] = None) -> None:
+    def __init__(self, history_manager: HistoryManager) -> None:
         """Initializes the API call monitor.
         
         Args:
             history_manager: HistoryManager instance for SQLite access
-            json_stats_path: Optional path to old JSON file for migration
         """
         self.history_manager = history_manager
         self._last_day: Optional[str] = None
-        
-        # Migrate from JSON if it exists (errors should not prevent initialization)
-        if json_stats_path and json_stats_path.exists():
-            try:
-                self.history_manager.migrate_api_stats_from_json(json_stats_path)
-            except Exception as e:
-                # Migration errors should not prevent monitor from working
-                print(f"WARNING: Failed to migrate API statistics from JSON: {e}")
 
     def _get_today(self) -> str:
         """Returns today's date as YYYY-MM-DD string."""
@@ -126,12 +117,11 @@ class APICallMonitor:
 _monitor: Optional[APICallMonitor] = None
 
 
-def get_monitor(history_manager: Optional[HistoryManager] = None, json_stats_path: Optional[Path] = None) -> APICallMonitor:
+def get_monitor(history_manager: Optional[HistoryManager] = None) -> APICallMonitor:
     """Returns the global monitor instance.
     
     Args:
         history_manager: HistoryManager instance for SQLite access. If None, creates a default one.
-        json_stats_path: Optional path to old JSON file for migration
     
     Note:
         If history_manager is provided and _monitor already exists with a different HistoryManager,
@@ -144,19 +134,7 @@ def get_monitor(history_manager: Optional[HistoryManager] = None, json_stats_pat
             # Default: Use history.db in project root
             history_path = Path(__file__).parent.parent.parent / "history.db"
             history_manager = HistoryManager(history_path)
-        if json_stats_path is None:
-            # Default: Check for api_stats.json in project root
-            json_stats_path = Path(__file__).parent.parent.parent / "api_stats.json"
-        try:
-            _monitor = APICallMonitor(history_manager, json_stats_path)
-        except Exception as e:
-            # If initialization fails, try without migration
-            print(f"WARNING: Failed to initialize API monitor with migration: {e}")
-            try:
-                _monitor = APICallMonitor(history_manager, None)
-            except Exception as e2:
-                print(f"ERROR: Failed to initialize API monitor: {e2}")
-                raise
+        _monitor = APICallMonitor(history_manager)
     return _monitor
 
 

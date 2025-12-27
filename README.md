@@ -752,7 +752,7 @@ The HomeConnect API has a daily limit of **1000 API calls per 24 hours**. Once t
 1. **Monitor API usage:**
    - Check API statistics via `/api/stats` endpoint
    - View statistics on server startup (printed in console)
-   - Statistics are stored in `api_stats.json` in the project root
+   - Statistics are stored in SQLite database (`history.db`) in the project root
 
 2. **Reduce API calls:**
    - Avoid frequent status polling - use the event stream (`/events`) instead
