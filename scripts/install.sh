@@ -197,8 +197,8 @@ User=$SERVER_USER
 WorkingDirectory=/opt/homeconnect_coffee/current
 ExecStart=$EXEC_START
 Restart=always
-StandardOutput=append:/var/log/homeconnect_coffee.log
-StandardError=append:/var/log/homeconnect_coffee.log
+StandardOutput=journal+file:/var/log/homeconnect_coffee.log
+StandardError=journal+file:/var/log/homeconnect_coffee.log
 
 [Install]
 WantedBy=multi-user.target
