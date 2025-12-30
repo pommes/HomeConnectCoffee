@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -31,6 +32,87 @@ class TestHistoryManager:
             assert result is not None
         finally:
             conn.close()
+
+    def test_init_with_db_extension(self, temp_dir: Path):
+        """Test that __init__ handles .db extension correctly."""
+        db_path = temp_dir / "history.db"
+        manager = HistoryManager(db_path)
+        
+        assert manager.db_path.suffix == ".db"
+        assert manager.db_path == db_path.resolve()
+        assert db_path.exists()
+
+    def test_init_without_extension(self, temp_dir: Path):
+        """Test that __init__ adds .db extension when missing."""
+        db_path_no_ext = temp_dir / "history"
+        manager = HistoryManager(db_path_no_ext)
+        
+        assert manager.db_path.suffix == ".db"
+        assert manager.db_path.name == "history.db"
+        assert manager.db_path.exists()
+
+    def test_init_with_json_extension(self, temp_dir: Path):
+        """Test that __init__ converts .json to .db extension."""
+        json_path = temp_dir / "history.json"
+        manager = HistoryManager(json_path)
+        
+        assert manager.db_path.suffix == ".db"
+        assert manager.db_path.name == "history.db"
+        assert manager.db_path.exists()
+        # Original .json file should not exist (we create .db, not .json)
+        assert not json_path.exists()
+
+    def test_init_path_is_always_absolute(self, temp_dir: Path):
+        """Test that db_path is always resolved to absolute path."""
+        # Test with relative path
+        original_cwd = os.getcwd()
+        try:
+            # Change to temp directory
+            os.chdir(temp_dir)
+            
+            # Use relative path
+            relative_path = Path("relative_history.db")
+            manager = HistoryManager(relative_path)
+            
+            # db_path should be absolute
+            assert manager.db_path.is_absolute()
+            assert manager.db_path == (temp_dir / "relative_history.db").resolve()
+            assert manager.db_path.exists()
+        finally:
+            os.chdir(original_cwd)
+
+    def test_init_creates_parent_directories(self, temp_dir: Path):
+        """Test that __init__ creates parent directories if they don't exist."""
+        nested_path = temp_dir / "nested" / "deep" / "history.db"
+        manager = HistoryManager(nested_path)
+        
+        assert nested_path.exists()
+        assert nested_path.parent.exists()
+        assert (temp_dir / "nested" / "deep").exists()
+
+    def test_add_event_works_after_path_resolution(self, temp_dir: Path):
+        """Test that add_event works correctly after path resolution."""
+        # Use relative path that gets resolved
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            relative_path = Path("test_history.db")
+            
+            manager = HistoryManager(relative_path)
+            
+            # Change working directory to verify absolute path works
+            os.chdir(temp_dir.parent)
+            
+            # Add event should still work
+            manager.add_event("test_event", {"key": "value"})
+            
+            # Verify event was saved
+            history = manager.get_history()
+            assert len(history) == 1
+            assert history[0]["type"] == "test_event"
+            assert history[0]["data"] == {"key": "value"}
+        finally:
+            os.chdir(original_cwd)
 
     def test_add_event(self, temp_history_db: Path):
         """Test add_event() adds event."""

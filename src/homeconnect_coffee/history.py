@@ -19,6 +19,9 @@ class HistoryManager:
         else:
             self.db_path = history_path
         
+        # Convert to absolute path to avoid issues with working directory changes
+        self.db_path = self.db_path.resolve()
+        
         self._lock = Lock()  # Lock for thread-safe access
         self._ensure_database()
 
@@ -90,8 +93,10 @@ class HistoryManager:
                 finally:
                     conn.close()
         except Exception as e:
-            # Don't propagate save errors, but log them
-            print(f"WARNING: Error saving event to history: {e}")
+            # Don't propagate save errors, but log them with more context
+            import traceback
+            print(f"WARNING: Error saving event '{event_type}' to history at {self.db_path}: {e}")
+            print(f"  Traceback: {traceback.format_exc()}")
 
     def get_history(
         self, 

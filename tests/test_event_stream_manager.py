@@ -189,3 +189,102 @@ class TestEventStreamManager:
         # Should not crash, thread should remain the same
         assert event_manager._stream_running is True
 
+    def test_history_worker_saves_events(self, temp_history_db):
+        """Test that history worker saves events to database."""
+        import os
+        import time
+        from pathlib import Path
+        from homeconnect_coffee.history import HistoryManager
+        
+        # Test with relative path that gets resolved
+        original_cwd = os.getcwd()
+        event_manager = None
+        try:
+            os.chdir(temp_history_db.parent)
+            relative_path = Path(temp_history_db.name)
+            
+            manager = HistoryManager(relative_path)
+            event_manager = EventStreamManager(manager, enable_logging=False)
+            
+            # Start history worker
+            event_manager.start()
+            
+            # Change working directory to verify absolute path works
+            os.chdir(temp_history_db.parent.parent)
+            
+            # Add event to queue
+            event_manager._history_queue.put_nowait(("test_event", {"key": "value"}))
+            
+            # Wait for worker to process (with timeout)
+            time.sleep(0.5)
+            
+            # Verify event was saved
+            history = manager.get_history()
+            assert len(history) == 1
+            assert history[0]["type"] == "test_event"
+            assert history[0]["data"] == {"key": "value"}
+        finally:
+            os.chdir(original_cwd)
+            if event_manager is not None:
+                event_manager.stop()
+
+    def test_history_worker_handles_errors_gracefully(self, temp_history_db):
+        """Test that history worker handles errors gracefully."""
+        from unittest.mock import Mock, patch
+        from homeconnect_coffee.history import HistoryManager
+        
+        manager = HistoryManager(temp_history_db)
+        event_manager = EventStreamManager(manager, enable_logging=False)
+        
+        # Start history worker
+        event_manager.start()
+        
+        # Mock add_event to raise an exception
+        with patch.object(manager, 'add_event', side_effect=Exception("Test error")):
+            # Add event to queue
+            event_manager._history_queue.put_nowait(("test_event", {"key": "value"}))
+            
+            # Wait a bit for processing
+            import time
+            time.sleep(0.2)
+            
+            # Should not crash, worker should continue
+            assert event_manager._history_worker_thread.is_alive()
+        
+        event_manager.stop()
+
+    def test_event_saved_with_different_working_directory(self, temp_history_db):
+        """Test that events are saved correctly even when working directory changes."""
+        import os
+        import time
+        from homeconnect_coffee.history import HistoryManager
+        
+        manager = HistoryManager(temp_history_db)
+        event_manager = EventStreamManager(manager, enable_logging=False)
+        
+        # Start history worker
+        event_manager.start()
+        
+        original_cwd = os.getcwd()
+        try:
+            # Change working directory
+            os.chdir(temp_history_db.parent.parent)
+            
+            # Add multiple events
+            for i in range(3):
+                event_manager._history_queue.put_nowait(("test_event", {"index": i}))
+            
+            # Wait for processing
+            time.sleep(0.5)
+            
+            # Verify all events were saved
+            history = manager.get_history()
+            assert len(history) == 3
+            for i, event in enumerate(history):
+                assert event["type"] == "test_event"
+                assert event["data"]["index"] == i
+        finally:
+            os.chdir(original_cwd)
+            if event_manager is not None:
+                event_manager.stop()
+
