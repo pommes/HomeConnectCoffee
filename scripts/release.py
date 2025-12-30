@@ -209,17 +209,9 @@ def check_changelog(version: str) -> None:
 def create_git_tag(version: str, dry_run: bool = False) -> None:
     """Create git tag for version.
     
-    Dev versions are NOT tagged (only committed).
+    All versions (including dev) are tagged to enable GitHub Releases.
     Pre-release versions already use hyphen format (e.g., 1.2.1-b2).
     """
-    # Check if this is a dev version - don't create tags for dev versions
-    if "-dev" in version or ".dev" in version:
-        if dry_run:
-            print(f"[DRY RUN] Would skip tag creation for dev version: {version}")
-        else:
-            print(f"Skipping tag creation for dev version: {version}")
-        return
-    
     # Version already uses hyphen format, just add 'v' prefix
     tag = f"v{version}"
     
@@ -248,7 +240,29 @@ def commit_version(version: str, dry_run: bool = False) -> None:
         print(f"[DRY RUN] Would commit VERSION file with version {version}")
         return
     
+    # Check if there are any changes to commit
+    # git diff --quiet returns 0 if no changes, 1 if there are changes
+    result = subprocess.run(
+        ["git", "diff", "--quiet", "VERSION"],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        # No changes to commit (returncode 0 means no diff)
+        print(f"Version {version} already committed (no changes)")
+        return
+    
     subprocess.run(["git", "add", "VERSION"], check=True)
+    
+    # Check if there are staged changes before committing
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "VERSION"],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        # No staged changes
+        print(f"Version {version} already committed (no staged changes)")
+        return
+    
     subprocess.run(
         ["git", "commit", "-m", f"Bump version to {version}"],
         check=True,
@@ -259,30 +273,21 @@ def commit_version(version: str, dry_run: bool = False) -> None:
 def push_to_github(version: str, dry_run: bool = False) -> None:
     """Push commits and tags to GitHub.
     
-    Dev versions only push commits, no tags.
+    All versions (including dev) push tags to enable GitHub Releases.
     Version already uses hyphen format, so tag is just v{version}.
     """
-    # Check if this is a dev version - don't push tags for dev versions
-    is_dev = "-dev" in version or ".dev" in version
+    tag = f"v{version}"
     
     if dry_run:
-        if is_dev:
-            print(f"[DRY RUN] Would push commits only (no tag) for dev version: {version}")
-        else:
-            tag = f"v{version}"
-            print(f"[DRY RUN] Would push commits and tag {tag} to GitHub")
+        print(f"[DRY RUN] Would push commits and tag {tag} to GitHub")
         return
     
     # Push commits
     subprocess.run(["git", "push"], check=True)
     
-    if is_dev:
-        print(f"Pushed commits to GitHub (no tag for dev version)")
-    else:
-        # Version already uses hyphen format, just add 'v' prefix
-        tag = f"v{version}"
-        subprocess.run(["git", "push", "origin", tag], check=True)
-        print(f"Pushed to GitHub (tag: {tag})")
+    # Push tag (for all versions including dev)
+    subprocess.run(["git", "push", "origin", tag], check=True)
+    print(f"Pushed to GitHub (tag: {tag})")
 
 
 def main() -> None:
@@ -295,7 +300,7 @@ def main() -> None:
     parser.add_argument(
         "--dev",
         action="store_true",
-        help="Create development version (e.g., 1.2.1-dev). Dev versions are committed but NOT tagged. "
+        help="Create development version (e.g., 1.2.1-dev). Dev versions create tags for GitHub Releases. "
              "Note: Dev versions are automatically created after each release, so manual creation is rarely needed.",
     )
     parser.add_argument(
@@ -353,6 +358,11 @@ def main() -> None:
             # Add or increment prerelease suffix
             new_version = increment_version(current_version, prerelease_type)
         print(f"New version: {new_version}")
+        
+        # Check if version actually changed
+        if current_version == new_version:
+            print(f"Version unchanged ({new_version}). Nothing to do.")
+            return
         
         if args.dry_run:
             print("\n[DRY RUN MODE - No changes will be made]\n")
@@ -413,8 +423,8 @@ def main() -> None:
                 print("GitHub Actions will automatically create a release.")
                 print(f"✓ Next dev version {next_dev_version} created automatically.")
             elif prerelease_type == "dev":
-                print(f"\n✓ Dev version {new_version} committed successfully!")
-                print("(No tag created for dev versions)")
+                print(f"\n✓ Dev version {new_version} created successfully!")
+                print("GitHub Actions will automatically create a pre-release.")
             else:
                 print(f"\n✓ Pre-release {new_version} created successfully!")
                 print("GitHub Actions will automatically create a pre-release.")
