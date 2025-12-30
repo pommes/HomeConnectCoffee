@@ -128,8 +128,8 @@ def increment_version(
     # If current version is a prerelease, increment the prerelease number if same type
     if current_prerelease_type and prerelease_type == current_prerelease_type:
         if prerelease_type == "dev":
-            # Dev versions don't have numbers, just return the same
-            return f"{major}.{minor}.{patch}-dev"
+            # Dev versions: increment patch version for new dev release
+            return f"{major}.{minor}.{patch + 1}-dev"
         elif prerelease_type == "alpha":
             return f"{major}.{minor}.{patch}-a{current_prerelease_num + 1}"
         elif prerelease_type == "beta":
@@ -354,15 +354,14 @@ def main() -> None:
             major, minor, patch, current_prerelease_type, _ = parse_version(current_version)
             if not current_prerelease_type:
                 parser.error(f"Current version {current_version} is already a release version. Use prerelease types (--alpha, --beta, --rc) to create prereleases.")
+        elif args.dev:
+            # For dev releases: use current version, don't increment
+            # GitHub Actions will increment after the release is created
+            new_version = current_version
         else:
-            # Add or increment prerelease suffix
+            # Add or increment prerelease suffix (alpha, beta, rc)
             new_version = increment_version(current_version, prerelease_type)
         print(f"New version: {new_version}")
-        
-        # Check if version actually changed
-        if current_version == new_version:
-            print(f"Version unchanged ({new_version}). Nothing to do.")
-            return
         
         if args.dry_run:
             print("\n[DRY RUN MODE - No changes will be made]\n")

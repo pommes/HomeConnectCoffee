@@ -36,14 +36,22 @@ jobs:
         # Check if this is a prerelease (contains '-')
         if [[ "$VERSION_NUMBER" == *"-"* ]]; then
           echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          echo "Skipping dev version creation for prerelease: $VERSION_NUMBER"
+          # Check if it's a dev release (ends with '-dev')
+          if [[ "$VERSION_NUMBER" == *"-dev" ]]; then
+            echo "is_dev_release=true" >> $GITHUB_OUTPUT
+            echo "Detected dev release: $VERSION_NUMBER"
+          else
+            echo "is_dev_release=false" >> $GITHUB_OUTPUT
+            echo "Skipping dev version creation for prerelease: $VERSION_NUMBER"
+          fi
         else
           echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          echo "is_dev_release=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Calculate next dev version
       id: next_dev
-      if: steps.version.outputs.is_prerelease == 'false'
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
       env:
         PYTHONPATH: src
       run: |
@@ -112,13 +120,13 @@ jobs:
         echo "Next dev version: $NEXT_DEV_VERSION"
 
     - name: Update VERSION file
-      if: steps.version.outputs.is_prerelease == 'false'
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
       run: |
         echo "${{ steps.next_dev.outputs.next_dev_version }}" > VERSION
         echo "Updated VERSION file to ${{ steps.next_dev.outputs.next_dev_version }}"
 
     - name: Commit and push dev version
-      if: steps.version.outputs.is_prerelease == 'false'
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
@@ -127,7 +135,7 @@ jobs:
         git push
 
     - name: Summary
-      if: steps.version.outputs.is_prerelease == 'false'
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
       run: |
         echo "✓ Dev version ${{ steps.next_dev.outputs.next_dev_version }} created and committed"
         echo ""
