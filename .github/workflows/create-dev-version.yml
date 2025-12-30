@@ -36,65 +36,98 @@ jobs:
         # Check if this is a prerelease (contains '-')
         if [[ "$VERSION_NUMBER" == *"-"* ]]; then
           echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          # Check if it's a dev release (ends with '-dev')
+          # Check what type of prerelease it is
           if [[ "$VERSION_NUMBER" == *"-dev" ]]; then
+            echo "prerelease_type=dev" >> $GITHUB_OUTPUT
             echo "is_dev_release=true" >> $GITHUB_OUTPUT
             echo "Detected dev release: $VERSION_NUMBER"
-          else
+          elif [[ "$VERSION_NUMBER" == *"-a"* ]] || [[ "$VERSION_NUMBER" == *"a"* ]]; then
+            echo "prerelease_type=alpha" >> $GITHUB_OUTPUT
             echo "is_dev_release=false" >> $GITHUB_OUTPUT
-            echo "Skipping dev version creation for prerelease: $VERSION_NUMBER"
+            echo "Detected alpha release: $VERSION_NUMBER"
+          elif [[ "$VERSION_NUMBER" == *"-b"* ]] || [[ "$VERSION_NUMBER" == *"b"* ]]; then
+            echo "prerelease_type=beta" >> $GITHUB_OUTPUT
+            echo "is_dev_release=false" >> $GITHUB_OUTPUT
+            echo "Detected beta release: $VERSION_NUMBER"
+          elif [[ "$VERSION_NUMBER" == *"-rc"* ]] || [[ "$VERSION_NUMBER" == *"rc"* ]]; then
+            echo "prerelease_type=rc" >> $GITHUB_OUTPUT
+            echo "is_dev_release=false" >> $GITHUB_OUTPUT
+            echo "Detected rc release: $VERSION_NUMBER"
+          else
+            echo "prerelease_type=unknown" >> $GITHUB_OUTPUT
+            echo "is_dev_release=false" >> $GITHUB_OUTPUT
+            echo "Unknown prerelease type: $VERSION_NUMBER"
           fi
         else
           echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          echo "prerelease_type=release" >> $GITHUB_OUTPUT
           echo "is_dev_release=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Calculate next dev version
-      id: next_dev
-      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
+    - name: Calculate next version
+      id: next_version
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.prerelease_type == 'alpha' || steps.version.outputs.prerelease_type == 'beta' || steps.version.outputs.prerelease_type == 'rc'
       env:
         PYTHONPATH: src
+        PRERELEASE_TYPE: ${{ steps.version.outputs.prerelease_type }}
       run: |
         VERSION="${{ steps.version.outputs.version }}"
+        PRERELEASE_TYPE="$PRERELEASE_TYPE"
         
-        # Use Python script to parse version (same logic as release.py)
-        NEXT_DEV_VERSION=$(python3 << EOF
+        # Use Python script to parse version and calculate next version
+        NEXT_VERSION=$(python3 << EOF
         import sys
+        import os
         sys.path.insert(0, 'src')
         
         def parse_version(version_str):
             """Parse version string into components."""
             version_str = version_str.strip()
             
-            # Extract prerelease info (should not happen for releases, but handle it)
-            # Support both formats: with hyphen (1.2.1-b2) and without (1.2.1b2) for backward compatibility
+            prerelease_type = ""
+            prerelease_num = 0
+            
+            # Extract prerelease info
             if "-dev" in version_str:
                 parts = version_str.split("-dev")
                 version_str = parts[0]
+                prerelease_type = "dev"
+                prerelease_num = 0
             elif ".dev" in version_str:
                 parts = version_str.split(".dev")
                 version_str = parts[0]
+                prerelease_type = "dev"
+                prerelease_num = 0
             elif "-a" in version_str:
                 parts = version_str.split("-a")
                 version_str = parts[0]
+                prerelease_type = "alpha"
+                prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             elif "-b" in version_str:
                 parts = version_str.split("-b")
                 version_str = parts[0]
+                prerelease_type = "beta"
+                prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             elif "-rc" in version_str:
                 parts = version_str.split("-rc")
                 version_str = parts[0]
+                prerelease_type = "rc"
+                prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             elif "a" in version_str and not version_str.endswith("a") and "-" not in version_str:
-                # Legacy format without hyphen (backward compatibility)
                 parts = version_str.split("a")
                 version_str = parts[0]
+                prerelease_type = "alpha"
+                prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             elif "b" in version_str and not version_str.endswith("b") and "-" not in version_str:
-                # Legacy format without hyphen (backward compatibility)
                 parts = version_str.split("b")
                 version_str = parts[0]
+                prerelease_type = "beta"
+                prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             elif "rc" in version_str and "-" not in version_str:
-                # Legacy format without hyphen (backward compatibility)
                 parts = version_str.split("rc")
                 version_str = parts[0]
+                prerelease_type = "rc"
+                prerelease_num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             
             # Parse version numbers
             version_parts = version_str.split(".")
@@ -102,42 +135,64 @@ jobs:
             minor = int(version_parts[1]) if len(version_parts) > 1 and version_parts[1].isdigit() else 0
             patch = int(version_parts[2]) if len(version_parts) > 2 and version_parts[2].isdigit() else 0
             
-            return (major, minor, patch)
+            return (major, minor, patch, prerelease_type, prerelease_num)
         
-        major, minor, patch = parse_version("$VERSION")
+        major, minor, patch, current_prerelease_type, prerelease_num = parse_version(VERSION)
+        target_prerelease_type = os.environ.get("PRERELEASE_TYPE", "")
         
-        # Increment patch version
-        patch += 1
+        # Determine next version based on release type
+        if target_prerelease_type == "release" or not target_prerelease_type:
+            # After a release: create next dev version
+            patch += 1
+            next_version = f"{major}.{minor}.{patch}-dev"
+        elif target_prerelease_type == "dev":
+            # After a dev release: do nothing (dev releases don't auto-increment)
+            # This should not happen as the step is skipped for dev releases
+            next_version = f"{major}.{minor}.{patch}-dev"
+        elif target_prerelease_type == current_prerelease_type:
+            # Same prerelease type: increment prerelease number
+            prerelease_num += 1
+            if target_prerelease_type == "alpha":
+                next_version = f"{major}.{minor}.{patch}-a{prerelease_num}"
+            elif target_prerelease_type == "beta":
+                next_version = f"{major}.{minor}.{patch}-b{prerelease_num}"
+            elif target_prerelease_type == "rc":
+                next_version = f"{major}.{minor}.{patch}-rc{prerelease_num}"
+            else:
+                # Fallback: create dev version
+                patch += 1
+                next_version = f"{major}.{minor}.{patch}-dev"
+        else:
+            # Different prerelease type: create dev version
+            patch += 1
+            next_version = f"{major}.{minor}.{patch}-dev"
         
-        # Create dev version
-        next_dev_version = f"{major}.{minor}.{patch}-dev"
-        
-        print(next_dev_version)
+        print(next_version)
         EOF
         )
         
-        echo "next_dev_version=$NEXT_DEV_VERSION" >> $GITHUB_OUTPUT
-        echo "Next dev version: $NEXT_DEV_VERSION"
+        echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+        echo "Next version: $NEXT_VERSION"
 
     - name: Update VERSION file
-      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.prerelease_type == 'alpha' || steps.version.outputs.prerelease_type == 'beta' || steps.version.outputs.prerelease_type == 'rc'
       run: |
-        echo "${{ steps.next_dev.outputs.next_dev_version }}" > VERSION
-        echo "Updated VERSION file to ${{ steps.next_dev.outputs.next_dev_version }}"
+        echo "${{ steps.next_version.outputs.next_version }}" > VERSION
+        echo "Updated VERSION file to ${{ steps.next_version.outputs.next_version }}"
 
-    - name: Commit and push dev version
-      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
+    - name: Commit and push next version
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.prerelease_type == 'alpha' || steps.version.outputs.prerelease_type == 'beta' || steps.version.outputs.prerelease_type == 'rc'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add VERSION
-        git commit -m "Bump version to ${{ steps.next_dev.outputs.next_dev_version }}"
+        git commit -m "Bump version to ${{ steps.next_version.outputs.next_version }}"
         git push
 
     - name: Summary
-      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.is_dev_release == 'true'
+      if: steps.version.outputs.is_prerelease == 'false' || steps.version.outputs.prerelease_type == 'alpha' || steps.version.outputs.prerelease_type == 'beta' || steps.version.outputs.prerelease_type == 'rc'
       run: |
-        echo "✓ Dev version ${{ steps.next_dev.outputs.next_dev_version }} created and committed"
+        echo "✓ Next version ${{ steps.next_version.outputs.next_version }} created and committed"
         echo ""
         echo "⚠️  IMPORTANT: Remember to pull the changes locally:"
         echo "   git pull"
